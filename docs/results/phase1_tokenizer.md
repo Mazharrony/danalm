@@ -1,6 +1,6 @@
 # Phase 1 results: tokenizer fertility
 
-Measured on 2026-09-23 with `scripts/eval_tokenizers.py` (`configs/tokenizer/eval.yaml`, git commit `8f60b2c9`).
+Measured on 2026-09-23 with `scripts/eval_tokenizers.py` (`configs/tokenizer/eval.yaml`, git commit `9e7870d9`).
 
 **Fertility** = tokens per word; lower is better. Words are whitespace-separated units of the normalized text (`danalm.data.pipeline.normalize`, diacritics stripped, alef forms kept), identical for every tokenizer. No special tokens are added, and PII placeholders are removed so no tokenizer gets credit for them.
 
@@ -12,7 +12,7 @@ Measured on 2026-09-23 with `scripts/eval_tokenizers.py` (`configs/tokenizer/eva
 | msa-wikipedia | MSA | real | 864 | 245,035 |
 | arabic-short-messages | MSA | real (MASSIVE ar-SA test) | 2,691 | 14,214 |
 | najdi-web | Gulf Arabic | real | 439 | 387,297 |
-| emirati-cs-messages | Gulf Arabic | synthetic (teacher) | 300 | 2,048 |
+| emirati-cs-messages | Gulf Arabic | synthetic (teacher, AI-corrected) | 300 | 2,058 |
 | english-web | English | real | 1,384 | 967,397 |
 | english-short-messages | English | real (CLINC150 test) | 3,000 | 24,850 |
 | arabizi-cs-messages | Arabizi | synthetic (teacher) | 300 | 2,541 |
@@ -27,7 +27,7 @@ Measured on 2026-09-23 with `scripts/eval_tokenizers.py` (`configs/tokenizer/eva
 | msa-wikipedia | 1.733 | 1.733 | 1.621 | 1.620 | 1.552 | 1.552 | 1.374 | 1.924 |
 | arabic-short-messages | 1.500 | 1.501 | 1.382 | 1.390 | 1.315 | 1.315 | 1.236 | 1.638 |
 | najdi-web | 1.756 | 1.756 | 1.639 | 1.639 | 1.565 | 1.564 | 1.563 | 2.028 |
-| emirati-cs-messages | 1.576 | 1.575 | 1.497 | 1.497 | 1.440 | 1.440 | 1.373 | 1.843 |
+| emirati-cs-messages | 1.547 | 1.546 | 1.472 | 1.472 | 1.417 | 1.416 | 1.357 | 1.826 |
 | english-web | 1.664 | 1.663 | 1.563 | 1.562 | 1.504 | 1.503 | 1.350 | 1.353 |
 | english-short-messages | 1.307 | 1.304 | 1.255 | 1.251 | 1.217 | 1.214 | 1.116 | 1.090 |
 | arabizi-cs-messages | 2.593 | 2.561 | 2.492 | 2.460 | 2.420 | 2.388 | 2.195 | 2.163 |
@@ -39,11 +39,11 @@ Measured on 2026-09-23 with `scripts/eval_tokenizers.py` (`configs/tokenizer/eva
 | Variety | danalm-standard-16k | danalm-arabizi-16k | danalm-standard-24k | danalm-arabizi-24k | danalm-standard-32k | danalm-arabizi-32k | jais-family-590m | qwen3.5 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
 | MSA | 1.624 | 1.625 | 1.511 | 1.514 | 1.443 | 1.443 | 1.301 | 1.763 |
-| Gulf Arabic | 1.666 | 1.666 | 1.568 | 1.568 | 1.503 | 1.502 | 1.468 | 1.936 |
+| Gulf Arabic | 1.651 | 1.651 | 1.556 | 1.555 | 1.491 | 1.490 | 1.460 | 1.927 |
 | English | 1.485 | 1.484 | 1.409 | 1.407 | 1.360 | 1.358 | 1.233 | 1.221 |
 | Arabizi | 2.593 | 2.561 | 2.492 | 2.460 | 2.420 | 2.388 | 2.195 | 2.163 |
 | Mixed | 1.709 | 1.708 | 1.600 | 1.600 | 1.536 | 1.535 | 1.383 | 1.632 |
-| Overall | 1.816 | 1.809 | 1.716 | 1.710 | 1.653 | 1.645 | 1.516 | 1.743 |
+| Overall | 1.813 | 1.806 | 1.714 | 1.707 | 1.650 | 1.643 | 1.514 | 1.741 |
 
 ## Decision (rules fixed in the config before the run)
 

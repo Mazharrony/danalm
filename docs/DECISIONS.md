@@ -23,6 +23,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-015 | 1 | Tokenizer design: byte-level BPE, Arabic-aware pre-tokenizer, fixed control tokens, atomic PII placeholders |
 | D-016 | 1 | Fertility eval sets: real where legally available, Qwen-generated (labelled synthetic) for Emirati, Arabizi, mixed |
 | D-017 | 1 | Tokenizer `danalm-v1`: 16,384-token byte-level BPE, `standard` pre-tokenizer, chosen by pre-declared rules |
+| D-018 | 1 | Text written or edited by closed AI tools: evaluation only, never training |
 
 ---
 
@@ -268,17 +269,33 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     corpus has almost no real Arabizi (all 2,451 documents tagged "arabizi" are false positives
     in English text, such as "7GHz" or "V2O5"), so BPE never learns Arabizi pieces, whatever the
     pre-splitting.
-  - **Vocabulary size:** overall fertility falls from 1.816 (16k) to 1.716 (24k, −5.5%) and
-    1.653 (32k, −9.0%). The bigger output layer costs more than that saves: training FLOPs per
+  - **Vocabulary size:** overall fertility falls from 1.813 (16k) to 1.714 (24k, −5.5%) and
+    1.650 (32k, −9.0%). The bigger output layer costs more than that saves: training FLOPs per
     word at the reference shape (d_model=512, 12 layers) are 1.000 / 1.031 / 1.076. 16k also
     wins or ties within the 2% tolerance at d_model 640 and 768.
   - **Existing tokenizers:** against Qwen3.5 (248k vocab), danalm-v1 needs 14% fewer tokens on
-    Gulf Arabic (1.666 vs 1.936) and 8% fewer on MSA (1.624 vs 1.763). It needs 22% more on
+    Gulf Arabic (1.651 vs 1.927) and 8% fewer on MSA (1.624 vs 1.763). It needs 22% more on
     English (1.485 vs 1.221) and 20% more on Arabizi (2.593 vs 2.163). Jais (85k vocab,
-    Arabic-English) is best everywhere (overall 1.516), as you would expect with a vocabulary 5×
+    Arabic-English) is best everywhere (overall 1.514), as you would expect with a vocabulary 5×
     larger. Its embedding table alone would be 43.5M parameters at d_model=512, most of our
     whole model budget.
 - **Known weak spot:** Arabizi, at 2.6 tokens per word, is the most expensive variety for every
   tokenizer. The Arabizi and Emirati eval sets are teacher-generated and unverified.
 - **Revisit if:** Phase 2 produces a substantial Arabizi corpus. Retraining takes about 45 s,
   and the tokenizer must be frozen before pretraining (Phase 4).
+
+## D-018 · Phase 1 · Text written or edited by closed AI tools: evaluation only
+
+- **Decision:** Any text written or edited by a closed AI tool (ChatGPT, Claude, Gemini, ...) may
+  be used for **evaluation only, never for training**. Its ledger entry says so, and Phase 2's
+  train/test overlap check must keep it out of every training set. It never counts as
+  native-speaker verification.
+- **Why:** Many closed-model terms forbid using outputs to develop competing models (D-012). For
+  a fertility measurement the risk is minimal, but training on such text would break the data
+  policy. The Emirati fertility set is now Qwen's 300 messages with 57 lines corrected by an
+  external AI tool (supplied by the owner). Clear non-Gulf dialect markers went from 43/300 lines
+  to 10/300, and Gulf fertility for danalm-v1 moved 1.666 → 1.651. The decision in D-017 did not
+  change. A second AI variant ("native Dubai") had more markers (14/300) plus apparently invented
+  forms, and was not used. All versions are archived.
+- **Alternatives:** Native-speaker correction, which is still the goal for Phase 2 data and the
+  Phase 2c test set; or keeping Qwen's raw output as the eval set.

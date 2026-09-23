@@ -450,3 +450,25 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     resumable teacher jobs first (<8 GB available or <4 GB commit headroom), and everything
     else only at half those levels.
   - **Measured speed:** 12–13 requests per minute (~85 tok/s), so ~5 h of generation.
+- **Result (2026-09-23; full tables in [results/phase2_data.md](results/phase2_data.md)):**
+  - **Generation:** 3,801 requests with 0 failures, 30,288 examples parsed. The filters kept
+    20,885 (69.0%): English 96.1%, Gulf Arabic 88.8%, Arabizi 80.7%, mixed 32.6%. For mixed,
+    the teacher often wrote pure Arabic (4,380) or pure English (1,352) instead of switching
+    languages. This took 4.6 h at 92 tok/s.
+  - **Judging:** the judge agreed with 18,233 (87.3%): English 92.1%, Gulf Arabic 91.5%, mixed
+    82.8%, Arabizi 81.3%. It took 31 minutes with no failed batches.
+  - **Final SFT set:** 18,233 examples (train 17,286, val 947), 1.13M danalm-v1 tokens. Every
+    intent has 745–1,027 examples, except `other` with 469.
+  - Peak resident memory of llama-server: 22.6 GB while generating, 25.9 GB while judging.
+    The watchdog never had to stop a job.
+- **Weak spots found** (they are the open decisions of the Phase 2 report):
+  - **`other`:** the judge agreed on only 51.9% of these, relabelling 225 as
+    `handoff_to_human`. The new description ends "routed to a bigger model or a person", which
+    overlaps with handoff. Only 13 of the 469 final `other` examples are mixed-language, because
+    greetings rarely mix languages and 398 were rejected as pure Arabic.
+  - **Delivery intents overlap:** 385 disagreements between `failed_delivery` and
+    `order_status`, and 126 of `cancel_order` → `order_status`. These rows were dropped, so the
+    set keeps the clear cases, but real customers will write the ambiguous ones.
+  - **Arabizi replies:** 9.0% contain clear non-Gulf words (Moroccan "ghadi" 229 times, Egyptian
+    "n3mel" 103 times), against 7.5% of Arabizi messages. Read by hand, most sampled replies are
+    barely meaningful. The judge checks only the label, so it does not catch this.

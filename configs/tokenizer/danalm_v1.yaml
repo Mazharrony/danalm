@@ -1,0 +1,10 @@
+# DanaLM tokenizer v1, chosen in Phase 1 by the pre-declared rules in configs/tokenizer/eval.yaml
+# (results: docs/results/phase1_tokenizer.md, decision: docs/DECISIONS.md D-017).
+#   uv run python scripts/train_tokenizer.py --config configs/tokenizer/danalm_v1.yaml
+base: bpe.yaml
+run_name: danalm-v1
+
+tokenizer:
+  vocab_size: 16384
+  pretokenizer: standard
+  out_dir: ${paths.artifacts_dir}/tokenizers/danalm-v1

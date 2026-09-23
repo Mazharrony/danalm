@@ -22,6 +22,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-014 | 1 | Training text keeps alef and alef-maksura spelling (`unify_alef: false`); diacritics still stripped |
 | D-015 | 1 | Tokenizer design: byte-level BPE, Arabic-aware pre-tokenizer, fixed control tokens, atomic PII placeholders |
 | D-016 | 1 | Fertility eval sets: real where legally available, Qwen-generated (labelled synthetic) for Emirati, Arabizi, mixed |
+| D-017 | 1 | Tokenizer `danalm-v1`: 16,384-token byte-level BPE, `standard` pre-tokenizer, chosen by pre-declared rules |
 
 ---
 
@@ -253,3 +254,31 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   which dialect the text is in. For Phase 2b training data it is not: it needs a native-speaker
   review, and possibly a larger Qwen3.5 model (Apache-2.0 family) with CPU offload if the 9B
   model stays weak.
+
+## D-017 · Phase 1 · Tokenizer `danalm-v1`: 16,384 tokens, `standard` pre-tokenizer
+
+- **Decision:** `danalm-v1` (`configs/tokenizer/danalm_v1.yaml`) is a byte-level BPE with a
+  vocabulary of 16,384 and the `standard` pre-tokenizer. It was trained in 41 s on the 335,328
+  training documents (803M characters) of the Phase 1 corpus. `tokenizer.json` SHA-256 is
+  `be583dda…`, and a retrain from the config reproduces it byte for byte. Full tables are in
+  [results/phase1_tokenizer.md](results/phase1_tokenizer.md).
+- **Why (measured on 10 held-out sets; the rules were fixed in the config before the run):**
+  - **Pre-tokenizer:** the Arabizi-aware variant lowered Arabizi fertility by only 1.2–1.3%,
+    below the 5% bar, so the rule picked `standard`. My hypothesis did not hold: the training
+    corpus has almost no real Arabizi (all 2,451 documents tagged "arabizi" are false positives
+    in English text, such as "7GHz" or "V2O5"), so BPE never learns Arabizi pieces, whatever the
+    pre-splitting.
+  - **Vocabulary size:** overall fertility falls from 1.816 (16k) to 1.716 (24k, −5.5%) and
+    1.653 (32k, −9.0%). The bigger output layer costs more than that saves: training FLOPs per
+    word at the reference shape (d_model=512, 12 layers) are 1.000 / 1.031 / 1.076. 16k also
+    wins or ties within the 2% tolerance at d_model 640 and 768.
+  - **Existing tokenizers:** against Qwen3.5 (248k vocab), danalm-v1 needs 14% fewer tokens on
+    Gulf Arabic (1.666 vs 1.936) and 8% fewer on MSA (1.624 vs 1.763). It needs 22% more on
+    English (1.485 vs 1.221) and 20% more on Arabizi (2.593 vs 2.163). Jais (85k vocab,
+    Arabic-English) is best everywhere (overall 1.516), as you would expect with a vocabulary 5×
+    larger. Its embedding table alone would be 43.5M parameters at d_model=512, most of our
+    whole model budget.
+- **Known weak spot:** Arabizi, at 2.6 tokens per word, is the most expensive variety for every
+  tokenizer. The Arabizi and Emirati eval sets are teacher-generated and unverified.
+- **Revisit if:** Phase 2 produces a substantial Arabizi corpus. Retraining takes about 45 s,
+  and the tokenizer must be frozen before pretraining (Phase 4).

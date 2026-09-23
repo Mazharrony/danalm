@@ -13,7 +13,7 @@ eval:
     - {name: msa-wikipedia, variety: MSA, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [wikipedia-ar]}
     - {name: arabic-short-messages, variety: MSA, kind: "real (MASSIVE ar-SA test)", path: "${paths.data_dir}/raw/tokenizer_eval/massive-ar-test.jsonl", keep_langs: [ar]}
     - {name: najdi-web, variety: Gulf Arabic, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb2-ars]}
-    - {name: emirati-cs-messages, variety: Gulf Arabic, kind: "synthetic (teacher)", path: "${paths.data_dir}/synthetic/fertility_eval/gulf_emirati.jsonl"}
+    - {name: emirati-cs-messages, variety: Gulf Arabic, kind: "synthetic (teacher, AI-corrected)", path: "${paths.data_dir}/synthetic/fertility_eval/gulf_emirati.jsonl"}
     - {name: english-web, variety: English, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb-edu, wikipedia-en]}
     - {name: english-short-messages, variety: English, kind: "real (CLINC150 test)", path: "${paths.data_dir}/raw/tokenizer_eval/clinc-test.jsonl", keep_langs: [en]}
     - {name: arabizi-cs-messages, variety: Arabizi, kind: "synthetic (teacher)", path: "${paths.data_dir}/synthetic/fertility_eval/arabizi.jsonl"}

@@ -53,3 +53,10 @@ Each run writes `runs/<run_name>-<timestamp>/` containing:
 
 To reproduce a run, check out its commit, apply the patch if there is one, and rerun the
 recorded command with `--config runs/<run>/config.yaml`.
+
+## License
+
+- **Code:** [Apache-2.0](LICENSE).
+- **Data:** each source keeps its own licence; see [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).
+  No data is stored in this repository.
+- **Model weights:** licence to be decided after the Phase 2 review of the training-data licences.

@@ -3,6 +3,8 @@ name = "danalm"
 version = "0.1.0"
 description = "DanaLM: a small decoder-only language model for UAE customer service (Gulf Arabic, English, Arabizi), trained from scratch."
 readme = "README.md"
+license = "Apache-2.0"  # the code; data sources keep their own licences (docs/DATA_LEDGER.md)
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 # Exact versions live in uv.lock; bounds here only say what the code is written against.
 dependencies = [

@@ -68,4 +68,4 @@ intents:
     description: The customer asks for a human agent or a manager, wants to file a formal complaint, or is very upset.
   - name: other
     domain: general
-    description: Only a greeting or thanks, or anything outside banking, telecom and delivery support.
+    description: Only a greeting or thanks, or a request that none of the other intents covers (it is routed to a bigger model or a person).

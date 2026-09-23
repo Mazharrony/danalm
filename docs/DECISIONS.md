@@ -369,3 +369,8 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   and ~20k examples, with many near-synonyms). Domain-only labels (too coarse to route or answer).
 - **Revisit if:** the judge's confusion matrix in the teacher pilot shows two intents constantly
   confused (merge them), or the human test set needs an intent that is missing.
+- **Update (2026-09-23, after the pilot, before the full run):** `other` originally meant
+  "outside banking, telecom and delivery support". That left in-domain questions none of the
+  intents cover (exchange rates, opening an account) without a correct label. It now means
+  "a greeting or thanks, or a request that no other intent covers". This matches the product
+  logic: whatever the small model cannot handle is routed to a bigger model or a person.

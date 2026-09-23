@@ -1,0 +1,42 @@
+# Install once with `uv run pre-commit install`; hooks then run on every `git commit`.
+# ruff and black run from the project venv (`uv run`), so hook versions always match uv.lock.
+exclude: ^docs/PROJECT_BRIEF\.md$  # kept verbatim, never auto-fixed
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: [--maxkb=500]
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint + import order)
+        entry: uv run ruff check --fix
+        language: system
+        types: [python]
+      - id: black
+        name: black (format)
+        entry: uv run black
+        language: system
+        types: [python]
+      - id: uv-lock
+        name: uv.lock matches pyproject.toml
+        entry: uv lock --check
+        language: system
+        files: ^(pyproject\.toml|uv\.lock)$
+        pass_filenames: false
+      - id: no-data-or-checkpoints
+        name: block data and model files
+        entry: data and model files must not be committed (keep them in data/, runs/ or checkpoints/)
+        language: fail
+        files: \.(pt|pth|ckpt|safetensors|bin|gguf|onnx|npy|npz|parquet|arrow)$

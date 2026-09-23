@@ -1,0 +1,13 @@
+# Environment + GPU capability check (`make check-env`). Output: runs/check-env-*/results.json
+base: base.yaml
+run_name: check-env
+
+check_env:
+  matmul_size: 8192   # n for the n x n x n matmul throughput test
+  matmul_iters: 50
+  attn_batch: 8       # causal scaled_dot_product_attention test shape (bf16)
+  attn_heads: 8
+  attn_seq_len: 1024
+  attn_head_dim: 64
+  attn_iters: 20
+  try_compile: true   # compile a tiny function to see whether torch.compile (Triton) works here

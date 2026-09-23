@@ -1,0 +1,18 @@
+# Test-set overlap check (Phase 2c): no test message may appear, exactly or nearly, in training
+# data. Run it after every change to the test set or the training data.
+#   uv run python scripts/check_overlap.py --config configs/data/overlap.yaml
+base: ../base.yaml
+run_name: overlap-check
+
+overlap:
+  test_files: ["${paths.data_dir}/test/test_set.jsonl"]
+  test_field: text
+  normalize: {strip_diacritics: true, unify_alef: false}
+  char_ngram: 3                # 3-grams keep near-copies with small edits above the threshold
+  num_perm: 128
+  near_dup_threshold: 0.6      # Jaccard of character 3-gram sets (measured: near-copies 0.77-0.88)
+  train_sets:
+    - {files: ["${paths.data_dir}/sft/*/generated.jsonl"], field: message, near_dup: true}
+    - {files: ["${paths.data_dir}/sft/*/rejected.jsonl"], field: message, near_dup: true}
+    - {files: ["${paths.data_dir}/synthetic/**/*.jsonl"], field: text, near_dup: true}
+    - {files: ["${paths.data_dir}/pretrain_corpus/*.jsonl"], field: text, near_dup: false}

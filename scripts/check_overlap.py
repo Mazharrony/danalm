@@ -1,0 +1,99 @@
+"""Check that the test set does not overlap with any training data (brief, Phase 2c).
+
+Usage: uv run python scripts/check_overlap.py --config configs/data/overlap.yaml
+Texts are canonicalized first (pipeline normalization, lower case, ة→ه, ى→ي, alef forms→ا,
+punctuation removed). A test text overlaps if it then equals a training text, or is a
+near-duplicate of a short training text (MinHash over character n-grams, which suits messages of
+a few words). Long pretraining documents are checked for exact equality only.
+The check is deliberately strict: a flagged test message is rewritten or removed by a person.
+Writes overlap_report.json next to the first test file and exits with code 1 on any overlap.
+"""
+
+import glob
+import json
+import re
+import sys
+from pathlib import Path
+from typing import Any
+
+from datasketch import MinHash, MinHashLSH
+
+from danalm.config import config_from_cli
+from danalm.data.pipeline import normalize
+
+_FOLD = str.maketrans({"ة": "ه", "ى": "ي", "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا"})
+_PUNCT = re.compile(r"[^\w\s<>]")
+
+
+def canonical(text: str, norm_cfg: dict[str, bool]) -> str:
+    """Spelling- and punctuation-insensitive form used only for overlap matching."""
+    folded = normalize(text, **norm_cfg).lower().translate(_FOLD)
+    return " ".join(_PUNCT.sub(" ", folded).split())
+
+
+def char_minhash(text: str, n: int, num_perm: int) -> MinHash:
+    mh = MinHash(num_perm=num_perm)
+    padded = f" {text.lower()} "
+    for gram in {padded[i : i + n] for i in range(max(1, len(padded) - n + 1))}:
+        mh.update(gram.encode("utf-8"))
+    return mh
+
+
+def read_texts(patterns: list[str], field: str) -> list[tuple[str, str]]:
+    """(file, text) for every row of every file matching the glob patterns."""
+    rows = []
+    for path in sorted({p for pattern in patterns for p in glob.glob(pattern, recursive=True)}):
+        with open(path, encoding="utf-8") as fh:
+            rows += [(path, json.loads(line)[field]) for line in fh if line.strip()]
+    return rows
+
+
+def main() -> None:
+    cfg = config_from_cli(__doc__)
+    o = cfg["overlap"]
+    norm = lambda t: canonical(t, o["normalize"])  # noqa: E731
+    test = read_texts(o["test_files"], o["test_field"])
+    if not test:
+        sys.exit(f"no test texts found in {o['test_files']}")
+
+    lsh = MinHashLSH(threshold=o["near_dup_threshold"], num_perm=o["num_perm"])
+    short: dict[str, str] = {}
+    exact: dict[str, str] = {}
+    for spec in o["train_sets"]:
+        for i, (path, text) in enumerate(read_texts(spec["files"], spec["field"])):
+            key = norm(text)
+            exact.setdefault(key, path)
+            if spec["near_dup"] and key not in short:
+                short[key] = path
+                lsh.insert(f"{path}:{i}", char_minhash(key, o["char_ngram"], o["num_perm"]))
+
+    hits: list[dict[str, Any]] = []
+    for path, text in test:
+        key = norm(text)
+        if key in exact:
+            hits.append(
+                {"test": text, "test_file": path, "kind": "exact", "train_file": exact[key]}
+            )
+            continue
+        near = lsh.query(char_minhash(key, o["char_ngram"], o["num_perm"]))
+        if near:
+            hits.append(
+                {"test": text, "test_file": path, "kind": "near", "train_matches": near[:3]}
+            )
+    report = {
+        "test_texts": len(test),
+        "train_texts": len(exact),
+        "overlaps": len(hits),
+        "hits": hits,
+    }
+    out = Path(o["test_files"][0]).parent / "overlap_report.json"
+    if not any(ch in str(out) for ch in "*?["):
+        out.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    print(f"{len(test)} test texts vs {len(exact):,} training texts: {len(hits)} overlap(s)")
+    for h in hits[:20]:
+        print(f"  [{h['kind']}] {h['test']}")
+    sys.exit(1 if hits else 0)
+
+
+if __name__ == "__main__":
+    main()

@@ -51,7 +51,8 @@ tokenizer-final:  ## train the chosen tokenizer (danalm-v1) and fill token count
 	uv run python scripts/update_ledger.py --config configs/ledger/phase1.yaml $(ARGS)
 
 # ---------------------------------------------------------------- Phase 2: data
-pretrain-data:  ## download (~2-3 GB of text columns), clean and tokenize the ~1.5B-token corpus
+pretrain-data:  ## download (~2-3 GB of text columns), clean, tokenize and verify the ~1.5B-token corpus
 	uv run python scripts/sample_corpus.py --config configs/data/pretrain_corpus.yaml $(ARGS)
 	uv run python scripts/prepare_data.py --config configs/data/pretrain_corpus.yaml $(ARGS)
 	uv run python scripts/tokenize_corpus.py --config configs/data/pretrain_corpus.yaml $(ARGS)
+	uv run python scripts/verify_shards.py --config configs/data/pretrain_corpus.yaml $(ARGS)

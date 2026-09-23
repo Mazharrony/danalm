@@ -18,7 +18,7 @@ from danalm.data.pipeline import (
     read_inputs,
     run_pipeline,
 )
-from danalm.data.shards import ShardWriter, read_shard, tokenize_split
+from danalm.data.shards import ShardWriter, read_shard, tokenize_split, verify_split
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests" / "fixtures" / "raw"
@@ -257,3 +257,24 @@ def test_shards_hold_every_token_with_eos_after_each_document(cfg, tmp_path):
     assert sum(c["docs"] for c in counts.values()) == len(rows)
     first_doc = ids[: int(np.argmax(ids == eos_id))]
     assert tok.decode(first_doc.tolist()) == rows[0]["text"]
+
+
+def test_verify_split_passes_on_good_shards_and_catches_a_corrupted_token(cfg, tmp_path):
+    run_pipeline(cfg, seed=0)
+    tok = Tokenizer.from_file(str(make_tiny_tokenizer(tmp_path / "tok") / "tokenizer.json"))
+    eos_id = tok.token_to_id("<eos>")
+    jsonl = Path(cfg.out_dir) / "train.jsonl"
+    (tmp_path / "shards").mkdir()
+    writer = ShardWriter(tmp_path / "shards", "train", shard_tokens=100)
+    tokenize_split(jsonl, tok, eos_id, writer, batch_docs=4)
+    files = [tmp_path / "shards" / f["file"] for f in writer.close()]
+
+    good = verify_split(files, jsonl, tok, eos_id, sample_docs=10_000, seed=0)
+    assert good["ok"] and good["boundary_docs"] > 0 and good["checked_docs"] == good["docs"]
+
+    ids = np.fromfile(files[0], dtype=np.uint16)  # change the first token of document 0
+    z, q = tok.token_to_id("Z"), tok.token_to_id("Q")
+    ids[0] = z if ids[0] != z else q
+    ids.tofile(files[0])
+    bad = verify_split(files, jsonl, tok, eos_id, sample_docs=10_000, seed=0)
+    assert not bad["ok"] and bad["mismatched_docs"] == [0]

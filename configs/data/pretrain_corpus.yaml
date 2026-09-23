@@ -126,3 +126,4 @@ tokenize:  # scripts/tokenize_corpus.py
   shard_tokens: 100000000      # 100M tokens = 200 MB per uint16 shard
   batch_docs: 1000
   out_dir: ${paths.data_dir}/pretrain_tokens
+  verify_docs: 400             # scripts/verify_shards.py: random docs per split decoded and compared

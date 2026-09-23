@@ -6,6 +6,7 @@ Memory use is one shard buffer plus one encode batch, whatever the corpus size.
 """
 
 import json
+import random
 from collections import Counter
 from collections.abc import Iterator
 from pathlib import Path
@@ -93,3 +94,52 @@ def tokenize_split(
 def read_shard(path: str | Path) -> np.memmap:
     """Memory-map one shard (read-only)."""
     return np.memmap(path, dtype=DTYPE, mode="r")
+
+
+def verify_split(
+    files: list[Path], jsonl_path: Path, tok: Tokenizer, eos_id: int, sample_docs: int, seed: int
+) -> dict[str, Any]:
+    """Check a split's shards against the cleaned JSONL they were made from.
+
+    Passes when the EOS count equals the number of documents, every id is below the vocabulary
+    size, and a seeded sample of documents, plus every document that crosses a shard boundary,
+    decodes back to its text exactly.
+    """
+    shards = [read_shard(f) for f in files]
+    offsets = np.cumsum([0] + [len(a) for a in shards])
+    ends = np.concatenate(
+        [np.flatnonzero(a == eos_id) + off for a, off in zip(shards, offsets[:-1], strict=True)]
+    )
+    max_id = max(int(a.max()) for a in shards)
+
+    def doc_ids(k: int) -> list[int]:  # tokens of document k, which may span several shards
+        lo, hi = (0 if k == 0 else int(ends[k - 1]) + 1), int(ends[k])
+        parts = [a[max(lo, off) - off : min(hi, off + len(a)) - off]
+                 for a, off in zip(shards, offsets[:-1], strict=True) if max(lo, off) < min(hi, off + len(a))]  # fmt: skip
+        return np.concatenate(parts).tolist() if parts else []
+
+    boundary = {int(np.searchsorted(ends, off)) for off in offsets[1:-1]} - {len(ends)}
+    picks = set(random.Random(seed).sample(range(len(ends)), min(sample_docs, len(ends))))
+    picks |= boundary
+    docs, mismatched = 0, []
+    with open(jsonl_path, encoding="utf-8") as fh:
+        for k, line in enumerate(fh):
+            docs += 1
+            if (
+                k in picks
+                and tok.decode(doc_ids(k), skip_special_tokens=False) != json.loads(line)["text"]
+            ):
+                mismatched.append(k)
+    result = {
+        "shards": len(files),
+        "tokens": int(offsets[-1]),
+        "docs": docs,
+        "eos": len(ends),
+        "max_id": max_id,
+        "vocab": tok.get_vocab_size(),
+        "checked_docs": len(picks),
+        "boundary_docs": len(boundary),
+        "mismatched_docs": mismatched[:20],
+    }
+    result["ok"] = docs == len(ends) and max_id < result["vocab"] and not mismatched
+    return result

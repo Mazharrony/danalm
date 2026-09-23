@@ -8,7 +8,14 @@ import numpy as np
 import pytest
 
 from danalm.config import load_config
-from danalm.data.pipeline import PipelineConfig, detect_lang, normalize, quality_ok, run_pipeline
+from danalm.data.pipeline import (
+    PipelineConfig,
+    detect_lang,
+    normalize,
+    quality_ok,
+    read_inputs,
+    run_pipeline,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests" / "fixtures" / "raw"
@@ -89,6 +96,35 @@ def test_pii_is_masked(raw, expected):
     assert norm(raw) == expected
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        # the repeat cap used to shorten digit runs: 1000000 -> 1000
+        ("I was charged 1000000 AED, not 100000", "I was charged 1000000 AED, not 100000"),
+        # Arabic-Indic digits used to bypass every PII pattern
+        ("رقمي ٠٥٠١٢٣٤٥٦٧", "رقمي <PHONE>"),
+        ("هويتي ٧٨٤-١٩٩٠-١٢٣٤٥٦٧-١", "هويتي <EID>"),
+        # a number glued to Arabic letters has no \b word boundary
+        ("رقمي0501234567", "رقمي<PHONE>"),
+        # UAE landlines were not covered
+        ("call 04 123 4567", "call <PHONE>"),
+        # cards, IBANs and long account numbers were not covered (banking domain)
+        ("card 4111 1111 1111 1111 blocked", "card <CARD> blocked"),
+        ("card 4111-1111-1111-1111 blocked", "card <CARD> blocked"),
+        ("card 4111111111111111 blocked", "card <CARD> blocked"),
+        ("amex 3782 822463 10005 ok", "amex <CARD> ok"),
+        ("IBAN AE07 0331 2345 6789 0123 456 ok", "IBAN <IBAN> ok"),
+        ("iban ae070331234567890123456", "iban <IBAN>"),
+        ("account 123456789012 please", "account <NUM> please"),
+        # must stay untouched
+        ("pay 250 AED on 2026-09-23 at 14:30", "pay 250 AED on 2026-09-23 at 14:30"),
+        ("order 12345678 is late", "order 12345678 is late"),
+    ],
+)
+def test_pii_and_number_regressions(raw, expected):
+    assert norm(raw) == expected
+
+
 # ---------------------------------------------------------------- language tags
 @pytest.mark.parametrize(
     ("text", "lang"),
@@ -102,6 +138,30 @@ def test_pii_is_masked(raw, expected):
 )
 def test_detect_lang(text, lang):
     assert detect_lang(text) == lang
+
+
+@pytest.mark.parametrize(
+    ("raw", "lang"),
+    [
+        # PII placeholders are Latin letters and used to push Arabic text to "mixed"
+        ("ابي اغير رقمي 0501234567", "ar"),
+        ("ابي اغير الايميل الى a.b@example.ae", "ar"),
+        # English number+suffix tokens used to count as Arabizi evidence
+        ("my 2nd card was blocked at 5pm", "en"),
+        ("I did not get the 2FA code", "en"),
+        ("3DS verification failed", "en"),
+    ],
+)
+def test_detect_lang_regressions(raw, lang):
+    assert detect_lang(norm(raw)) == lang
+
+
+def test_reader_handles_bom_and_non_object_json_lines(tmp_path):
+    lines = ['﻿{"text": "first row after a BOM"}', "[1, 2]", '"just a string"']
+    (tmp_path / "bom.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert list(read_inputs([str(tmp_path / "*.jsonl")], "text")) == [
+        ("first row after a BOM", "bom")
+    ]
 
 
 # ---------------------------------------------------------------- quality filter
@@ -146,6 +206,8 @@ def test_pipeline_on_fixture(cfg):
     assert any("<PHONE>" in t for t in texts)
     assert any("<EID>" in t for t in texts)
     assert not any("4567" in t for t in texts)  # the masked digits never reach the output
+    phone_row = next(row for row in train + val if "<PHONE>" in row["text"])
+    assert phone_row["lang"] == "ar"  # the placeholder must not make it "mixed"
     assert json.loads((out / "stats.json").read_text(encoding="utf-8")) == dict(stats)
 
 

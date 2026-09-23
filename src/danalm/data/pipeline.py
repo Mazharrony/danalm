@@ -47,23 +47,42 @@ AR_DIACRITICS = re.compile("[ؐ-ًؚ-ٰٟۖ-ۭ]")
 TATWEEL = "ـ"
 ALEF_VARIANTS = re.compile("[إأآٱ]")  # إ أ آ ٱ
 ALEF, ALEF_MAKSURA, YEH = "ا", "ى", "ي"  # ا ى ي
+# Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits -> ASCII, so PII patterns see them.
+ASCII_DIGITS = str.maketrans(
+    {chr(0x0660 + i): str(i) for i in range(10)} | {chr(0x06F0 + i): str(i) for i in range(10)}
+)
 URL = re.compile(r"https?://\S+|www\.\S+")
 EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-# UAE numbers: +971 / 00971 / 05x...
-PHONE = re.compile(
-    r"(?:\+|00)?971[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}|\b0?5\d[\s-]?\d{3}[\s-]?\d{4}\b"
+# Number patterns use digit boundaries (?<!\d)/(?!\d) rather than \b, which fails when a number
+# is glued to Arabic letters ("رقمي0501234567").
+EMIRATES_ID = re.compile(r"(?<!\d)784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d(?!\d)")
+IBAN = re.compile(r"(?<![A-Za-z])AE\d{2}(?:[ -]?\d){19}(?!\d)", re.IGNORECASE)  # AE + 21 digits
+CARD = re.compile(
+    r"(?<!\d)(?:\d{4}[ -]?){3}\d{4}(?!\d)"  # 4-4-4-4
+    r"|(?<!\d)\d{4}[ -]?\d{6}[ -]?\d{5}(?!\d)"  # Amex 4-6-5
+    r"|(?<!\d)(?!(?:00)?971)\d{13,19}(?!\d)"  # any other 13-19 digit run (not a +971 phone)
 )
-EMIRATES_ID = re.compile(r"\b784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d\b")
-REPEAT = re.compile(r"(.)\1{4,}")  # "هههههههه" / "sooooo" -> capped at 3
+PHONE = re.compile(  # UAE numbers
+    r"(?<!\d)(?:\+|00)?971[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}(?!\d)"  # +971 / 00971 / 971
+    r"|(?<!\d)0?5\d[\s-]?\d{3}[\s-]?\d{4}(?!\d)"  # mobile 05X XXX XXXX
+    r"|(?<!\d)0[2-4679][\s-]?\d{3}[\s-]?\d{4}(?!\d)"  # landline 0X XXX XXXX
+)
+LONG_NUMBER = re.compile(r"(?<!\d)\d{9,}(?!\d)")  # account / reference numbers left over
+PLACEHOLDER = re.compile(r"<(?:URL|EMAIL|EID|IBAN|CARD|PHONE|NUM)>")
+REPEAT = re.compile(r"([^\d\s])\1{4,}")  # "هههههههه" / "sooooo" -> capped at 3; digits untouched
 WS = re.compile(r"\s+")
 AR_CHAR = re.compile("[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
 LAT_CHAR = re.compile(r"[A-Za-z]")
 ARABIZI_HINT = re.compile(r"\b\w*[a-zA-Z][2356789][a-zA-Z]\w*\b|\b[2356789][a-zA-Z]{2,}\b")
+# English number+suffix tokens that look like Arabizi digit-letters: 2nd, 5pm, 2FA, 3DS, 10GB ...
+EN_NUMERIC = re.compile(
+    r"\b\d+(?:st|nd|rd|th|am|pm|fa|ds|gb|mb|kg|km|min|mins|hr|hrs|aed|dhs|usd)\b", re.IGNORECASE
+)
 
 
 def normalize(text: str, strip_diacritics: bool, unify_alef: bool) -> str:
-    """NFKC, drop tatweel (and optionally diacritics), unify alef forms, mask PII,
-    cap repeated characters at 3 and collapse whitespace."""
+    """NFKC, drop tatweel (and optionally diacritics), unify alef forms, mask PII (which also
+    turns Arabic-Indic digits into ASCII), cap repeated characters at 3, collapse whitespace."""
     text = unicodedata.normalize("NFKC", text)
     text = text.replace(TATWEEL, "")
     if strip_diacritics:
@@ -76,18 +95,29 @@ def normalize(text: str, strip_diacritics: bool, unify_alef: bool) -> str:
 
 
 def mask_pii(text: str) -> str:
-    """Replace URLs, emails, Emirates IDs and UAE phone numbers with placeholder tokens.
+    """Replace URLs, emails, Emirates IDs, IBANs, card numbers, UAE phone numbers and other long
+    digit runs with placeholder tokens. Keeps PII out of the model and out of the public repo.
 
-    Keeps PII out of the model and out of the public repo.
+    Arabic-Indic digits are converted to ASCII first so they cannot slip past the patterns.
+    Order matters: the most specific number patterns run first.
     """
+    text = text.translate(ASCII_DIGITS)
     text = URL.sub("<URL>", text)
     text = EMAIL.sub("<EMAIL>", text)
     text = EMIRATES_ID.sub("<EID>", text)
-    return PHONE.sub("<PHONE>", text)
+    text = IBAN.sub("<IBAN>", text)
+    text = CARD.sub("<CARD>", text)
+    text = PHONE.sub("<PHONE>", text)
+    return LONG_NUMBER.sub("<NUM>", text)
 
 
 def detect_lang(text: str) -> str:
-    """Script-based tag: ar | en | mixed | arabizi | other. No model download needed."""
+    """Script-based tag: ar | en | mixed | arabizi | other. No model download needed.
+
+    PII placeholders are ignored, and English number+suffix tokens (2nd, 5pm, 2FA) are not
+    Arabizi evidence. Known limit: Arabizi without digits ("shlonak, abi") is tagged "en".
+    """
+    text = PLACEHOLDER.sub(" ", text)
     ar, lat = len(AR_CHAR.findall(text)), len(LAT_CHAR.findall(text))
     letters = ar + lat
     if letters == 0:
@@ -96,7 +126,7 @@ def detect_lang(text: str) -> str:
     if ar_ratio > 0.85:
         return "ar"
     if ar_ratio < 0.15:
-        return "arabizi" if len(ARABIZI_HINT.findall(text)) >= 1 else "en"
+        return "arabizi" if ARABIZI_HINT.search(EN_NUMERIC.sub(" ", text)) else "en"
     return "mixed"
 
 
@@ -128,14 +158,15 @@ def read_inputs(patterns: list[str], text_field: str) -> Iterator[tuple[str, str
     for f in files:
         src = Path(f).stem
         suffix = Path(f).suffix.lower()
-        with open(f, encoding="utf-8", errors="replace") as fh:
+        # utf-8-sig drops a leading BOM, which would otherwise break the first JSON line
+        with open(f, encoding="utf-8-sig", errors="replace") as fh:
             if suffix == ".jsonl":
                 for line in fh:
                     try:
                         obj = json.loads(line)
                     except json.JSONDecodeError:
                         continue
-                    if isinstance(obj.get(text_field), str):
+                    if isinstance(obj, dict) and isinstance(obj.get(text_field), str):
                         yield obj[text_field], obj.get("source", src)
             elif suffix == ".csv":
                 for row in csv.DictReader(fh):

@@ -15,6 +15,8 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-007 | 0 | Reproducibility contract: every run records config + seed + git commit (+ diff) + environment |
 | D-008 | 0 | Seeding: always seed everything; deterministic CUDA kernels opt-in per config |
 | D-009 | 0 | Adopt `data_pipeline.py` as `danalm.data.pipeline`, driven by YAML config |
+| D-010 | 0 | PII masking: add cards, IBANs, landlines, long numbers; Arabic-Indic digits -> ASCII; never alter amounts |
+| D-011 | 0 | Language tags: fix clear bugs now; measure accuracy against human labels in Phase 2 |
 
 ---
 
@@ -131,3 +133,34 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   byte-identical `train.jsonl`, `val.jsonl` and `stats.json`.
 - **Alternatives:** Keep it as a standalone argparse script (settings would live in shell
   history instead of versioned configs).
+
+## D-010 · Phase 0 · PII masking: wider coverage, number-safe normalization
+
+- **Decision:** `mask_pii` also masks card numbers (`<CARD>`), UAE IBANs (`<IBAN>`), UAE
+  landlines, and any leftover run of 9+ digits (`<NUM>`, for account and reference numbers). It
+  converts Arabic-Indic digits (٠-٩, ۰-۹) to ASCII before matching, and uses digit boundaries so
+  numbers glued to Arabic letters are caught. The repeat cap no longer touches digits.
+  Placeholders: `<URL> <EMAIL> <EID> <IBAN> <CARD> <PHONE> <NUM>`.
+- **Why:** New tests showed that before the fix `1000000 AED` became `1000 AED` (amounts were
+  silently changed); phone numbers and Emirates IDs typed in Arabic-Indic digits were not masked;
+  and card numbers and IBANs were never masked, although they are likely in banking messages. (A
+  code comment mentioned "generic long digit runs", but that was never implemented.) The brief
+  says "Mask PII" with no exceptions.
+- **Trade-offs:** Harmless 9+ digit numbers (e.g. tracking numbers) are masked too. Amounts,
+  dates, times, flight numbers and short order numbers are kept (tested). The model only ever
+  sees ASCII digits, so inference must run the same `normalize()`.
+- **Known gap:** Regexes cannot catch personal names or street addresses. That matters for the
+  human-written test set and any real messages; a small NER pass can be added later if needed.
+- **Alternatives:** A learned PII/NER model (heavier and needs labels).
+- **Revisit if:** Phase 2 audits of real samples show misses or over-masking.
+
+## D-011 · Phase 0 · Language tags: fix clear bugs now, measure accuracy in Phase 2
+
+- **Decision:** `detect_lang` ignores PII placeholders and no longer counts English
+  number+suffix tokens (2nd, 5pm, 2FA, 3DS, 10GB) as Arabizi. No other heuristic tuning yet.
+- **Why:** Placeholders are Latin letters, so an Arabic message with a masked phone number was
+  tagged `mixed`, and "my 2nd card was blocked at 5pm" was tagged `arabizi`. Both were clear
+  bugs. Tuning the heuristic further without labelled data would be guesswork.
+- **Known limit:** Arabizi without digits ("shlonak, abi agayer el card") is tagged `en`. The
+  Phase 6 per-language breakdown will use human-verified labels on the test set, not this
+  heuristic, and Phase 2 will measure the heuristic against those labels.

@@ -1,0 +1,12 @@
+# Final SFT dataset (Phase 2b output, Phase 5 input): judge-verified examples of the full run.
+#   uv run python scripts/build_sft_dataset.py --config configs/sft/build.yaml
+base: ../base.yaml
+run_name: sft-final
+
+build:
+  inputs: ["${paths.data_dir}/sft/sft-full/verified.jsonl"]
+  out_dir: ${paths.data_dir}/sft/final
+  val_frac: 0.05
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  tokenizer_name: danalm-v1
+  used_for: supervised fine-tuning (Phase 5)

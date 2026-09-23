@@ -333,6 +333,16 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   model, ~30% longer training); a 50/50 Arabic/English mix.
 - **Revisit if:** Phase 3 sizing changes the parameter count a lot, or the Phase 4 pilot shows
   validation loss still dropping steeply at the end.
+- **Result (2026-09-23):** built as planned. 1,750,179 of 1,752,399 documents were kept
+  (5.31B characters). The 2,220 dropped were 1,174 exact duplicates, 921 too short, 123 mostly
+  non-letters and 2 repetitive. Text tokens per source: arb 550.4M, fineweb-edu 480.3M, ars
+  299.9M, wiki-ar 100.3M, wiki-en 50.0M, domain sets 12.9M. That is 1,493.7M in total, and
+  1,495.5M with one EOS per document: train 1,487.9M in 15 shards, val 7.6M. Every source
+  landed within 0.4% of its target. The ledger has per-source raw and kept counts.
+  `scripts/verify_shards.py` passed on both splits, checking EOS count = document count, ids
+  below the vocabulary size, and 814 documents (14 of them crossing a shard boundary) decoding
+  back to their text exactly. Wall time: sampling 40 min, cleaning 70 min, tokenization 16 min.
+  Commits: sampled at `e962393`, cleaned at `d1bf704`, tokenized at `b702aeb`.
 
 ## D-020 · Phase 2 · Streaming pipeline and token shards
 
@@ -350,6 +360,9 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   Phase 1 freeze. The Phase 4 trainer memory-maps the shards.
 - **Consequence:** Phase 1's outputs (corpus split, danalm-v1) came from the old in-memory
   pipeline. Reproduce them from their recorded commits (up to `579e4b8`).
+- **Measured on the 1.5B-token build:** peak resident memory was 0.5 GB for sampling, ~0.6 GB
+  for cleaning and 1.6 GB for tokenization. All three ran next to the SFT teacher without
+  trouble.
 
 ## D-021 · Phase 2 · Intent taxonomy: 21 intents
 
@@ -419,3 +432,21 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   post-filter yields (english 36, gulf_arabic 38, arabizi 45, mixed 62 per intent). That is
   30,408 generated examples, for an expected ~18k usable. Estimated time is 4.6–6.1 h of
   generation plus about 1–1.3 h of judging.
+- **Update (2026-09-23, during the full run):**
+  - **Restarted for crash safety.** The first attempt kept every answer in memory until the
+    end, and one failed request would have crashed it. After 31 minutes (380 of 3,801
+    requests) it was stopped, with the owner's approval, and restarted with `b702aeb`:
+    - every answer is appended and fsynced to `answers.jsonl` (or `judge_answers.jsonl`), and
+      re-running the same config resumes;
+    - failed requests are retried 3 times (30/60/90 s);
+    - a run stops cleanly after 20 failures;
+    - the chain retries each step up to 3 times.
+    A fake-server test crashed the run after 40 of 105 requests, and the judge after 3 of 17
+    batches. The resumed outputs were byte-identical to an uninterrupted run.
+  - **Real memory use.** In steady state llama-server holds 22.6 GB resident and 32.6 GB
+    committed, not the 16 GB of the benchmark. Its host prompt cache (`--cache-ram`, default
+    8 GiB) fills up after a few hundred requests. The page file here is fixed at 20 GB
+    (commit limit 83.75 GB), so the watchdog now also tracks commit headroom. It stops the
+    resumable teacher jobs first (<8 GB available or <4 GB commit headroom), and everything
+    else only at half those levels.
+  - **Measured speed:** 12–13 requests per minute (~85 tok/s), so ~5 h of generation.

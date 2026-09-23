@@ -37,7 +37,8 @@ def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[d
     specs = []
     for intent in intents:
         for variety, v in sft["varieties"].items():
-            for _ in range(sft["requests_per_cell"]):
+            # a variety may ask for more requests when its yield is low (e.g. mixed)
+            for _ in range(v.get("requests_per_cell", sft["requests_per_cell"])):
                 specs.append(
                     {
                         **intent,

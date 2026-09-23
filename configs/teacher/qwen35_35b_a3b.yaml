@@ -1,12 +1,17 @@
 # Pilot teacher: Qwen3.5-35B-A3B, a mixture-of-experts model (35B total, 3B active per token),
-# Apache-2.0. With --cpu-moe the expert weights stay in system RAM (~20 GB) and attention runs on
-# the GPU, so it fits the 12 GB card. RAM is watched by the scratch watchdog (Phase 2 rule).
+# Apache-2.0. Most expert weights stay in system RAM and attention runs on the GPU, so it fits
+# the 12 GB card. RAM is watched by the scratch watchdog (Phase 2 rule).
 base: qwen35.yaml
 
 teacher:
   model_path: "D:/All Source Codes/queen 3.5/models/Qwen3.5-35B-A3B-UD-Q4_K_XL.gguf"
   model_name: "Qwen3.5-35B-A3B UD-Q4_K_XL (unsloth/Qwen3.5-35B-A3B-GGUF)"
   revision: bc014a17be43adabd7066b7a86075ff935c6a4e2
-  extra_args: ["--n-gpu-layers", "99", "--cpu-moe", "--flash-attn", "on", "--jinja",
-               "--reasoning-format", "auto"]
+  # Benchmarked on 16 SFT requests (runs/bench-*.log, D-022): all experts in RAM with mmap =
+  # 38 tok/s; without mmap = 42 tok/s; experts of the last 13 of 40 layers on the GPU, 8 slots,
+  # no mmap = 68 tok/s, 9.7 GB VRAM, 16 GB RAM peak. The last setting is used.
+  parallel: 8
+  ctx_size: 32768      # 4096 tokens per slot
+  extra_args: ["--n-gpu-layers", "99", "--n-cpu-moe", "27", "--load-mode", "none",
+               "--flash-attn", "on", "--jinja", "--reasoning-format", "auto"]
   startup_timeout_s: 600

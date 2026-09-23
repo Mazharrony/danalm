@@ -405,3 +405,17 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 - **Alternatives:** Keep the 9B (twice as fast, but lower quality in exactly the Gulf and mixed
   varieties the product needs). Qwen3.5-27B dense (likely stronger, but about 5–10 tok/s with
   partial offload, so days for the full run).
+- **Server tuning** (benchmark of 16 identical SFT requests, `runs/bench-*.log`):
+
+  | Setting | Generation | Prompt processing | VRAM | Peak RAM |
+  |---|---:|---:|---:|---:|
+  | All experts in RAM, 4 slots, mmap (the pilot's setting) | 38 tok/s | ~44 tok/s | 3.1 GB | 22.6 GB |
+  | Same without mmap | 42 tok/s | ~120 tok/s | 3.1 GB | 22.2 GB |
+  | Experts of the last 13 of 40 layers on the GPU, 8 slots, no mmap | **68 tok/s** | — | 9.7 GB | 16.1 GB |
+
+  The last setting is used for the full run (`configs/teacher/qwen35_35b_a3b.yaml`). The pilot
+  itself ran with the first setting; its run folders keep that config.
+- **Full run** (`configs/sft/full.yaml`): requests per variety are sized from the pilot's
+  post-filter yields (english 36, gulf_arabic 38, arabizi 45, mixed 62 per intent). That is
+  30,408 generated examples, for an expected ~18k usable. Estimated time is 4.6–6.1 h of
+  generation plus about 1–1.3 h of judging.

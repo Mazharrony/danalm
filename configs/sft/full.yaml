@@ -1,0 +1,19 @@
+# Phase 2b full synthetic SFT run with the pilot winner (D-022): Qwen3.5-35B-A3B, tuned server.
+# Requests per cell are set per variety from the pilot's usable yield (after the stricter
+# filters: english 83%, gulf_arabic 79%, arabizi 66%, mixed 29% of parsed examples), aiming at
+# ~5k usable examples per variety and ~3k for mixed: 21 x (36 + 38 + 45 + 62) x 8 = 30,408
+# examples generated, ~18k usable after filtering and judging.
+#   uv run python scripts/generate_sft.py --config configs/sft/full.yaml
+#   uv run python scripts/verify_sft.py   --config configs/sft/full.yaml
+base: [generate.yaml, ../teacher/qwen35_35b_a3b.yaml]
+run_name: sft-full
+
+sft:
+  varieties:
+    english: {requests_per_cell: 36}
+    gulf_arabic: {requests_per_cell: 38}
+    arabizi: {requests_per_cell: 45}
+    mixed: {requests_per_cell: 62}
+
+verify:
+  inputs: ["${sft.out_dir}/generated.jsonl"]

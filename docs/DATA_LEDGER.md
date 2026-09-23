@@ -12,11 +12,31 @@ Every piece of data DanaLM uses: where it came from, under which licence, and ho
 
 ## 1. Collected data
 
-| ID | Source | Subset / revision | Licence | Collected on | Used for | Docs (raw → kept) | UTF-8 bytes | Words | Tokens | Notes |
-|----|--------|-------------------|---------|--------------|----------|-------------------|-------------|-------|--------|-------|
-| — | nothing collected yet | | | | | | | | | |
+Generated from [`data_ledger.jsonl`](data_ledger.jsonl) by the data scripts; do not edit by hand.
+"raw" is what was downloaded or generated; "kept" is what survived cleaning, deduplication and
+filtering. Tokens are counted on the kept text with the tokenizer named in brackets.
 
-**Total collected so far: 0 tokens.**
+<!-- ledger:start -->
+| ID | Source | Revision | Licence | Kind | Collected on | Used for | Docs (raw → kept) | UTF-8 bytes (kept) | Words (kept) | Tokens (kept) | Notes |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| tokenizer-eval-data/massive-ar-test | AmazonScience/massive `ar-SA/test/*.parquet` | `ed58ac42` | CC-BY-4.0 | real (localized by native speakers) | 2026-09-23 | tokenizer fertility evaluation only (Phase 1) | 2,974 → — | — | — | — | 3 row groups; Arabic (ar-SA) assistant utterances, test split |
+| tokenizer-eval-data/clinc-test | clinc/clinc_oos `plus/test-*.parquet` | `155b9c71` | CC-BY-3.0 | real (crowdsourced) | 2026-09-23 | tokenizer fertility evaluation only (Phase 1) | 5,500 → — | — | — | — | 6 row groups; English assistant queries incl. out-of-scope, test split |
+| synth-fertility-eval/gulf_emirati | teacher: Qwen3.5-9B Q4_K_M (unsloth/Qwen3.5-9B-GGUF) via llama.cpp | `3885219b` | Apache-2.0 (teacher outputs) | synthetic | 2026-09-23 | tokenizer fertility evaluation only (Phase 1); teacher-quality pilot | 376 → 300 | 19,231 | 2,048 | — | 19 requests, 5,259 teacher tokens; not yet checked by a native speaker |
+| synth-fertility-eval/arabizi | teacher: Qwen3.5-9B Q4_K_M (unsloth/Qwen3.5-9B-GGUF) via llama.cpp | `3885219b` | Apache-2.0 (teacher outputs) | synthetic | 2026-09-23 | tokenizer fertility evaluation only (Phase 1); teacher-quality pilot | 367 → 300 | 13,436 | 2,541 | — | 19 requests, 7,174 teacher tokens; not yet checked by a native speaker |
+| synth-fertility-eval/mixed | teacher: Qwen3.5-9B Q4_K_M (unsloth/Qwen3.5-9B-GGUF) via llama.cpp | `3885219b` | Apache-2.0 (teacher outputs) | synthetic | 2026-09-23 | tokenizer fertility evaluation only (Phase 1); teacher-quality pilot | 383 → 248 | 16,635 | 2,170 | — | 19 requests, 5,198 teacher tokens; not yet checked by a native speaker |
+| tokenizer-corpus/fineweb2-arb | HuggingFaceFW/fineweb-2 `data/arb_Arab/train/*.parquet` | `af9c1333` | ODC-By-1.0 (+ Common Crawl ToU) | real | 2026-09-23 | tokenizer training (Phase 1) | 101,702 → — | — | — | — | 102 row groups; Standard Arabic web text |
+| tokenizer-corpus/fineweb2-ars | HuggingFaceFW/fineweb-2 `data/ars_Arab/train/*.parquet` | `af9c1333` | ODC-By-1.0 (+ Common Crawl ToU) | real | 2026-09-23 | tokenizer training (Phase 1) | 23,488 → — | — | — | — | 24 row groups; Najdi (Saudi) dialect web text, the closest open Gulf-like dialect |
+| tokenizer-corpus/wikipedia-ar | wikimedia/wikipedia `20231101.ar/*.parquet` | `b04c8d1c` | CC-BY-SA-3.0 + GFDL | real | 2026-09-23 | tokenizer training (Phase 1) | 42,471 → — | — | — | — | 44 row groups; Arabic Wikipedia |
+| tokenizer-corpus/fineweb-edu | HuggingFaceFW/fineweb-edu `sample/10BT/*.parquet` | `87f09149` | ODC-By-1.0 (+ Common Crawl ToU) | real | 2026-09-23 | tokenizer training (Phase 1) | 54,137 → — | — | — | — | 55 row groups; Educational English web text |
+| tokenizer-corpus/wikipedia-en | wikimedia/wikipedia `20231101.en/*.parquet` | `b04c8d1c` | CC-BY-SA-3.0 + GFDL | real | 2026-09-23 | tokenizer training (Phase 1) | 16,520 → — | — | — | — | 17 row groups; English Wikipedia |
+| tokenizer-corpus/bitext-support | bitext/Bitext-customer-support-llm-chatbot-training-dataset `default/train/*.parquet` | `f93dfd84` | CDLA-Sharing-1.0 | synthetic (by Bitext) | 2026-09-23 | tokenizer training (Phase 1) | 26,872 → — | — | — | — | 27 row groups; English customer-support requests and answers |
+| tokenizer-corpus/bitext-banking | bitext/Bitext-retail-banking-llm-chatbot-training-dataset `*.parquet` | `3e362109` | CDLA-Sharing-1.0 | synthetic (by Bitext) | 2026-09-23 | tokenizer training (Phase 1) | 25,545 → — | — | — | — | 1 row groups; English retail-banking requests and answers |
+| tokenizer-corpus/bitext-telco | bitext/Bitext-telco-llm-chatbot-training-dataset `default/train/*.parquet` | `45588345` | CDLA-Sharing-1.0 | synthetic (by Bitext) | 2026-09-23 | tokenizer training (Phase 1) | 26,000 → — | — | — | — | 26 row groups; English telecom requests and answers |
+| tokenizer-corpus/clinc-train | clinc/clinc_oos `plus/train-*.parquet` | `155b9c71` | CC-BY-3.0 | real (crowdsourced) | 2026-09-23 | tokenizer training (Phase 1) | 15,250 → — | — | — | — | 16 row groups; English assistant queries incl. out-of-scope (train split only) |
+| tokenizer-corpus/massive-ar-train | AmazonScience/massive `ar-SA/train/*.parquet` | `ed58ac42` | CC-BY-4.0 | real (localized by native speakers) | 2026-09-23 | tokenizer training (Phase 1) | 11,514 → — | — | — | — | 12 row groups; Arabic (ar-SA) assistant utterances (train split only) |
+
+**Total kept so far:** 0 tokens.
+<!-- ledger:end -->
 
 ## 2. Licence checks
 

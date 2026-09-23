@@ -1,0 +1,39 @@
+# --- Data, runs and model artifacts: never committed (see docs/PROJECT_BRIEF.md, rules) ---
+# Anchored with a leading "/" so src/danalm/data/ (code) is NOT ignored.
+/data/
+/runs/
+/checkpoints/
+/wandb/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.gguf
+*.onnx
+*.npy
+*.npz
+*.parquet
+*.arrow
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- Secrets / local settings ---
+.env
+.env.*
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

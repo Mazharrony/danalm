@@ -1,0 +1,71 @@
+# DanaLM intent taxonomy (docs/DECISIONS.md D-021): 21 intents over banking, telecom and
+# food/parcel delivery, plus cross-domain intents. Shared by SFT data generation, the human test
+# set and evaluation. The model outputs exactly one `name` in {"intent": ..., "reply": ...}.
+intents:
+  # ---------------------------------------------------------------- banking
+  - name: card_not_working
+    domain: banking
+    description: A bank card is declined, blocked, not working at an ATM or shop, or has not arrived.
+  - name: lost_or_stolen_card
+    domain: banking
+    description: The card was lost or stolen and the customer wants it blocked or replaced.
+  - name: balance_or_statement
+    domain: banking
+    description: Checking the account balance, or asking for a statement or transaction history.
+  - name: transfer_issue
+    domain: banking
+    description: A money transfer or payment failed, is pending or delayed, or was not received.
+  - name: unrecognized_transaction
+    domain: banking
+    description: A transaction the customer does not recognise, suspected fraud, or a charge to dispute.
+  - name: fees_and_charges
+    domain: banking
+    description: Questions or complaints about bank fees, interest or service charges.
+  - name: loans_and_credit
+    domain: banking
+    description: Loans, credit cards, credit limits, instalments or applying for them.
+  # ---------------------------------------------------------------- telecom
+  - name: bill_inquiry
+    domain: telecom
+    description: Questions about a mobile or internet bill, its amount, or how to pay it.
+  - name: network_or_internet_issue
+    domain: telecom
+    description: No signal, slow or no internet, dropped calls, home internet or router problems.
+  - name: plan_change
+    domain: telecom
+    description: Changing, upgrading or cancelling a mobile or internet plan, add-on or data pack.
+  - name: sim_or_number
+    domain: telecom
+    description: A SIM that does not work or needs replacing, eSIM, or porting or changing a number.
+  - name: roaming
+    domain: telecom
+    description: Activating roaming, roaming packages, or roaming charges while travelling.
+  # ---------------------------------------------------------------- delivery (food and parcels)
+  - name: order_status
+    domain: delivery
+    description: Where an order or parcel is, tracking it, or a delivery that is late.
+  - name: missing_or_wrong_item
+    domain: delivery
+    description: An item is missing, wrong or damaged, or the food arrived cold or spilled.
+  - name: cancel_order
+    domain: delivery
+    description: The customer wants to cancel an order.
+  - name: refund_request
+    domain: delivery
+    description: The customer asks for a refund or compensation for an order.
+  - name: change_delivery_details
+    domain: delivery
+    description: Changing the delivery address, time or recipient, or rescheduling a delivery.
+  - name: failed_delivery
+    domain: delivery
+    description: The courier could not deliver, the parcel was sent back, or it shows delivered but never arrived.
+  # ---------------------------------------------------------------- cross-domain
+  - name: account_access
+    domain: general
+    description: Cannot log in to the app or website, OTP not received, password reset, or account locked.
+  - name: handoff_to_human
+    domain: general
+    description: The customer asks for a human agent or a manager, wants to file a formal complaint, or is very upset.
+  - name: other
+    domain: general
+    description: Only a greeting or thanks, or anything outside banking, telecom and delivery support.

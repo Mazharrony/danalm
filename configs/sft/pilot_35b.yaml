@@ -1,0 +1,4 @@
+# Teacher pilot, run B: the same cells with Qwen3.5-35B-A3B (experts in RAM, --cpu-moe).
+#   uv run python scripts/generate_sft.py --config configs/sft/pilot_35b.yaml
+base: [generate.yaml, ../teacher/qwen35_35b_a3b.yaml]
+run_name: sft-pilot-35b

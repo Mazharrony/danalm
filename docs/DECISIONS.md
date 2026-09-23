@@ -26,6 +26,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-018 | 1 | Text written or edited by closed AI tools: evaluation only, never training |
 | D-019 | 2 | Pretraining corpus: ~1.5B danalm-v1 tokens, ~63% Arabic (incl. 300M Najdi dialect), ~35% English, ~1% domain |
 | D-020 | 2 | Streaming data pipeline (hash-based val split) and uint16 token shards; constant memory at any corpus size |
+| D-021 | 2 | Intent taxonomy: 21 intents (banking 7, telecom 5, delivery 6, cross-domain 3 incl. `other` and `handoff_to_human`) |
 
 ---
 
@@ -348,3 +349,23 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   Phase 1 freeze. The Phase 4 trainer memory-maps the shards.
 - **Consequence:** Phase 1's outputs (corpus split, danalm-v1) came from the old in-memory
   pipeline. Reproduce them from their recorded commits (up to `579e4b8`).
+
+## D-021 · Phase 2 · Intent taxonomy: 21 intents
+
+- **Decision:** `configs/sft/intents.yaml` has 21 intents:
+  - **Banking (7):** card_not_working, lost_or_stolen_card, balance_or_statement,
+    transfer_issue, unrecognized_transaction, fees_and_charges, loans_and_credit.
+  - **Telecom (5):** bill_inquiry, network_or_internet_issue, plan_change, sim_or_number,
+    roaming.
+  - **Delivery, food and parcels (6):** order_status, missing_or_wrong_item, cancel_order,
+    refund_request, change_delivery_details, failed_delivery.
+  - **Cross-domain (3):** account_access, handoff_to_human, other.
+- **Why:** These are the common first-contact reasons in the three domains, cut so that each
+  one maps to a distinct next action. The brief asks for about 20 intents, including `other`
+  and `handoff_to_human`. `account_access` (login, OTP, password) is cross-domain because every
+  app has it. Each intent has a one-line description; the teacher, the judge and the human test
+  set all use the same text.
+- **Alternatives:** Fine-grained Banking77-style intents (77 of them; too many for a ~50M model
+  and ~20k examples, with many near-synonyms). Domain-only labels (too coarse to route or answer).
+- **Revisit if:** the judge's confusion matrix in the teacher pilot shows two intents constantly
+  confused (merge them), or the human test set needs an intent that is missing.

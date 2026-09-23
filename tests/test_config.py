@@ -26,6 +26,13 @@ def test_base_chain_merges_nested_keys(tmp_path):
     assert load_config(child) == {"seed": 1, "paths": {"data_dir": "data", "runs_dir": "out"}}
 
 
+def test_list_of_bases_merges_left_to_right(tmp_path):
+    write_yaml(tmp_path / "a.yaml", {"x": 1, "t": {"model": "9b", "port": 1}})
+    write_yaml(tmp_path / "b.yaml", {"y": 2, "t": {"model": "35b"}})
+    child = write_yaml(tmp_path / "c.yaml", {"base": ["a.yaml", "b.yaml"], "y": 3})
+    assert load_config(child) == {"x": 1, "y": 3, "t": {"model": "35b", "port": 1}}
+
+
 def test_circular_base_is_rejected(tmp_path):
     write_yaml(tmp_path / "a.yaml", {"base": "b.yaml"})
     write_yaml(tmp_path / "b.yaml", {"base": "a.yaml"})
@@ -88,7 +95,14 @@ def test_save_and_reload_round_trip_keeps_arabic(tmp_path):
     assert "دانة" in (tmp_path / "c.yaml").read_text(encoding="utf-8")
 
 
-@pytest.mark.parametrize("path", sorted((REPO / "configs").rglob("*.yaml")), ids=lambda p: p.name)
+RUN_CONFIGS = [  # files with a base: (or base.yaml itself); others, like intents.yaml, are data
+    p
+    for p in sorted((REPO / "configs").rglob("*.yaml"))
+    if p.name == "base.yaml" or "base:" in p.read_text(encoding="utf-8")
+]
+
+
+@pytest.mark.parametrize("path", RUN_CONFIGS, ids=lambda p: str(p.relative_to(REPO / "configs")))
 def test_repo_configs_load(path):
     cfg = load_config(path)
     assert {"seed", "deterministic", "paths", "tracking"} <= cfg.keys()

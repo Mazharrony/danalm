@@ -1,0 +1,10 @@
+# Teacher pilot, judge step: the 35B model blindly re-labels BOTH pilot sets, so the two teachers
+# are compared with the same judge.
+#   uv run python scripts/verify_sft.py --config configs/sft/pilot_verify.yaml
+base: [generate.yaml, ../teacher/qwen35_35b_a3b.yaml]
+run_name: sft-pilot-verify
+
+verify:
+  inputs:
+    - ${paths.data_dir}/sft/sft-pilot-9b/generated.jsonl
+    - ${paths.data_dir}/sft/sft-pilot-35b/generated.jsonl

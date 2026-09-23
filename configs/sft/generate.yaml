@@ -1,0 +1,101 @@
+# Phase 2b synthetic SFT data: customer messages and short replies from the local Qwen teacher,
+# labelled by construction with an intent from configs/sft/intents.yaml (D-021), then filtered
+# (JSON, language, Gulf dialect, duplicates) and blindly re-labelled by a judge (verify_sft.py).
+# A "cell" is one (intent, variety) pair: examples = 21 intents x 4 varieties x requests_per_cell
+# x examples_per_request (before filtering).
+#   uv run python scripts/generate_sft.py --config configs/sft/generate.yaml
+base: ../teacher/qwen35.yaml
+run_name: sft-generate
+
+sft:
+  intents_file: configs/sft/intents.yaml
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  used_for: supervised fine-tuning (Phase 5)
+  examples_per_request: 8
+  requests_per_cell: 1
+  near_dup_threshold: 0.8      # MinHash on messages, across the whole run
+  minhash_num_perm: 64
+  shingle_words: 2             # messages are short, so word pairs
+  normalize: {strip_diacritics: true, unify_alef: false}
+  params:                      # Qwen3.5 non-thinking settings, a little warmer for variety
+    temperature: 0.8
+    top_p: 0.8
+    top_k: 20
+    presence_penalty: 1.5
+    max_tokens: 2500
+    chat_template_kwargs: {enable_thinking: false}
+  tones: [polite, annoyed, in a hurry, confused, very short and direct, angry]
+  system: >-
+    You write realistic training examples for a customer-service chatbot in the UAE. Follow the
+    requested format exactly and output nothing else.
+  prompt: >-
+    Write {n} different examples. Each has a customer message with the intent "{intent}"
+    ({domain}: {description}) and the assistant's reply.
+    Customer: {persona}, tone: {tone}. {style}
+    Vary the wording, the details and the length (3 to 30 words per message). Do not use real
+    company or brand names.
+    Reply rules: {reply_style} One or two short, polite sentences. Never invent facts (balances,
+    amounts, dates, names, policies). Never ask for card numbers, PINs, passwords, OTPs or CVV.
+    Say what happens next or what the customer should do.{intent_rule}
+    Output exactly {n} lines, each one JSON object: {{"message": "...", "reply": "..."}}.
+  intent_rules:
+    handoff_to_human: " The reply says you will connect them to a human agent."
+    other: " The reply answers a greeting or thanks politely and says what you can help with."
+  varieties:
+    gulf_arabic:
+      reply_langs: [ar]
+      keep_langs: [ar]
+      gulf_filter: true
+      personas: [an Emirati man in his 20s, an Emirati mother in her 40s, an Emirati retiree,
+                 an Emirati university student in Al Ain, a Saudi visitor in Dubai]
+      style: >-
+        Write the message in Emirati Gulf Arabic, Arabic script, the way people type on WhatsApp:
+        informal, sometimes with spelling mistakes. Use Gulf words such as ابا / ابغي، ليش، شو،
+        وين، شلون، وايد، مب، هاي، الحين، باچر، زين، عقب. Never use Egyptian, Levantine or
+        Maghrebi words such as عايز، محتاج، ليه، ايه، حصل، مش، مفيش، دي، ده، كتير، بدي، هلق،
+        واش، ديالي, and never negate with a ش ending (ماقدرش). No formal Standard Arabic.
+      reply_style: Reply in polite, simple Gulf Arabic (Arabic script), like a UAE call-centre agent.
+    english:
+      reply_langs: [en]
+      keep_langs: [en]
+      gulf_filter: false
+      personas: [an Indian expat working in Dubai, a Pakistani driver in Sharjah,
+                 a Filipino nurse in Abu Dhabi, a British expat in Dubai Marina,
+                 an Emirati professional who prefers English, an elderly customer who finds apps hard]
+      style: >-
+        Write the message in English as UAE residents type it: informal, sometimes non-native
+        grammar, abbreviations (pls, asap, u) and typos, amounts in AED.
+      reply_style: Reply in clear, simple English.
+    arabizi:
+      reply_langs: [arabizi, en]
+      keep_langs: [arabizi, en]  # Arabizi without digits is tagged "en" by the heuristic
+      gulf_filter: false
+      personas: [an Emirati man in his 20s, an Emirati university student, a young Emirati woman]
+      style: >-
+        Write the message in Arabizi: Emirati Gulf Arabic typed with Latin letters, with numbers
+        for Arabic sounds (3 = ع, 7 = ح, 2 = ء, 5 = خ, 6 = ط, 9 = ص, 8 = غ). Use Gulf words such
+        as abi / abgha, laish, shu, wain, shlon, wayed, mob, al7een, zain. Every word must be a
+        real Gulf Arabic word; never use Egyptian or Levantine words such as 3ayez, leh, kteer,
+        mesh, mafeesh, biddi.
+      reply_style: Reply in the same Arabizi style (Gulf Arabic in Latin letters and numbers).
+    mixed:
+      reply_langs: [ar, mixed]
+      keep_langs: [mixed]
+      gulf_filter: true
+      personas: [an Emirati man in his 20s, an Emirati mother in her 40s,
+                 a young Emirati professional in Dubai]
+      style: >-
+        Write the message mixing Emirati Gulf Arabic (Arabic script) with English words in the
+        same sentence, as people in the UAE often do (for example "الطلب ما وصل and the app says
+        delivered"). Never only English, never only Arabic. Never use Egyptian or Levantine words.
+      reply_style: Reply in Gulf Arabic (Arabic script), keeping the English terms the customer used.
+
+verify:  # blind re-labelling by a judge model (scripts/verify_sft.py); disagreements are dropped
+  batch: 20
+  params:
+    temperature: 0.0
+    max_tokens: 1500
+    chat_template_kwargs: {enable_thinking: false}
+  system: >-
+    You label customer-service messages with exactly one intent. Answer with one line per
+    message, in the form "number: label", and nothing else.

@@ -1,0 +1,4 @@
+# Teacher pilot, run A: the current 9B teacher on one request per (intent, variety) cell.
+#   uv run python scripts/generate_sft.py --config configs/sft/pilot_9b.yaml
+base: generate.yaml
+run_name: sft-pilot-9b

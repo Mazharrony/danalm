@@ -104,13 +104,17 @@ def resolve_refs(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def _load_with_bases(path: Path, seen: tuple[Path, ...] = ()) -> dict[str, Any]:
-    """Load one YAML file and merge it over the file named by its `base:` key (relative path)."""
+    """Load one YAML file and merge it over its `base:` file(s) (relative paths). A list of
+    bases is merged left to right, so later ones override earlier ones."""
     path = path.resolve()
     if path in seen:
         raise ValueError(f"circular `base:` chain at {path}")
     with open(path, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
-    base = cfg.pop("base", None)
-    if base is None:
+    bases = cfg.pop("base", None)
+    if bases is None:
         return cfg
-    return deep_merge(_load_with_bases(path.parent / base, (*seen, path)), cfg)
+    merged: dict[str, Any] = {}
+    for base in [bases] if isinstance(bases, str) else bases:
+        merged = deep_merge(merged, _load_with_bases(path.parent / base, (*seen, path)))
+    return deep_merge(merged, cfg)

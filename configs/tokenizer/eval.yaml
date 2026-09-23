@@ -1,0 +1,37 @@
+# Phase 1 fertility evaluation: the 6 DanaLM candidates vs. two existing Arabic-English tokenizers,
+# on held-out text only (never used to train any DanaLM tokenizer).
+#   uv run python scripts/eval_tokenizers.py --config configs/tokenizer/eval.yaml
+base: ../base.yaml
+run_name: tokenizer-eval
+
+eval:
+  normalize: {strip_diacritics: true, unify_alef: false}  # exactly as the training corpus
+  max_texts: 3000            # per eval set, after filtering (seeded random sample)
+  mine_words: [5, 40]        # sentence length range when mining mixed sentences from web text
+  sets:
+    - {name: msa-web, variety: MSA, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb2-arb]}
+    - {name: msa-wikipedia, variety: MSA, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [wikipedia-ar]}
+    - {name: arabic-short-messages, variety: MSA, kind: "real (MASSIVE ar-SA test)", path: "${paths.data_dir}/raw/tokenizer_eval/massive-ar-test.jsonl", keep_langs: [ar]}
+    - {name: najdi-web, variety: Gulf Arabic, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb2-ars]}
+    - {name: emirati-cs-messages, variety: Gulf Arabic, kind: "synthetic (teacher)", path: "${paths.data_dir}/synthetic/fertility_eval/gulf_emirati.jsonl"}
+    - {name: english-web, variety: English, kind: real, path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb-edu, wikipedia-en]}
+    - {name: english-short-messages, variety: English, kind: "real (CLINC150 test)", path: "${paths.data_dir}/raw/tokenizer_eval/clinc-test.jsonl", keep_langs: [en]}
+    - {name: arabizi-cs-messages, variety: Arabizi, kind: "synthetic (teacher)", path: "${paths.data_dir}/synthetic/fertility_eval/arabizi.jsonl"}
+    - {name: mixed-cs-messages, variety: Mixed, kind: "synthetic (teacher)", path: "${paths.data_dir}/synthetic/fertility_eval/mixed.jsonl"}
+    - {name: mixed-web-sentences, variety: Mixed, kind: "real (mined from web)", path: "${paths.data_dir}/tokenizer_corpus/val.jsonl", sources: [fineweb2-arb, fineweb2-ars, wikipedia-ar], mine_lang: mixed}
+  tokenizers:  # ours carry vocab_size + pretokenizer; external ones carry repo_id + revision
+    - {name: danalm-standard-16k, file: "${paths.artifacts_dir}/tokenizers/bpe-standard-16384/tokenizer.json", vocab_size: 16384, pretokenizer: standard}
+    - {name: danalm-arabizi-16k, file: "${paths.artifacts_dir}/tokenizers/bpe-arabizi-16384/tokenizer.json", vocab_size: 16384, pretokenizer: arabizi}
+    - {name: danalm-standard-24k, file: "${paths.artifacts_dir}/tokenizers/bpe-standard-24576/tokenizer.json", vocab_size: 24576, pretokenizer: standard}
+    - {name: danalm-arabizi-24k, file: "${paths.artifacts_dir}/tokenizers/bpe-arabizi-24576/tokenizer.json", vocab_size: 24576, pretokenizer: arabizi}
+    - {name: danalm-standard-32k, file: "${paths.artifacts_dir}/tokenizers/bpe-standard-32768/tokenizer.json", vocab_size: 32768, pretokenizer: standard}
+    - {name: danalm-arabizi-32k, file: "${paths.artifacts_dir}/tokenizers/bpe-arabizi-32768/tokenizer.json", vocab_size: 32768, pretokenizer: arabizi}
+    - {name: jais-family-590m, repo_id: inceptionai/jais-family-590m, revision: b3aee8237e54f9f714c08cde4f4382590b744984, licence: Apache-2.0}
+    - {name: qwen3.5, repo_id: Qwen/Qwen3.5-9B, revision: c202236235762e1c871ad0ccb60c8ee5ba337b9a, licence: Apache-2.0}
+  external_dir: ${paths.artifacts_dir}/external_tokenizers
+  reference_model: {d_model: 512, n_layers: 12}  # only for FLOPs per word; sized for real in Phase 3
+  decision:  # declared before running; applied mechanically by the script
+    arabizi_min_gain: 0.05   # use the arabizi pre-tokenizer if Arabizi fertility drops by >= 5% ...
+    other_max_loss: 0.01     # ... at every vocab size, and no other variety gets > 1% worse
+    vocab_tie: 0.02          # then the vocab size with the lowest FLOPs/word; smaller wins within 2%
+  results_md: docs/results/phase1_tokenizer.md

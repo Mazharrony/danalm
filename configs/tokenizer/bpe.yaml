@@ -1,0 +1,17 @@
+# DanaLM byte-level BPE tokenizer. Phase 1 trains 6 candidates with overrides:
+#   uv run python scripts/train_tokenizer.py --config configs/tokenizer/bpe.yaml \
+#       tokenizer.vocab_size=24576 tokenizer.pretokenizer=arabizi
+base: ../base.yaml
+run_name: bpe
+
+tokenizer:
+  vocab_size: 24576          # candidates: 16384, 24576, 32768 (multiples of 128 for GPU matmuls)
+  min_frequency: 2
+  pretokenizer: arabizi      # candidates: standard, arabizi (see danalm.tokenizer.bpe)
+  eos_token: "<|endoftext|>"
+  pad_token: "<|pad|>"
+  extra_special_tokens: ["<|user|>", "<|assistant|>"]
+  reserved_tokens: 8
+  placeholder_tokens: ["<URL>", "<EMAIL>", "<EID>", "<IBAN>", "<CARD>", "<PHONE>", "<NUM>"]
+  corpus: ${paths.data_dir}/tokenizer_corpus/train.jsonl
+  out_dir: ${paths.artifacts_dir}/tokenizers/bpe-${tokenizer.pretokenizer}-${tokenizer.vocab_size}

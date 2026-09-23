@@ -19,6 +19,9 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-011 | 0 | Language tags: fix clear bugs now; measure accuracy against human labels in Phase 2 |
 | D-012 | 0 | Data policy: only free, legally usable data, licence checked at the source, every collection logged in DATA_LEDGER.md |
 | D-013 | 0 | Teacher: the owner's local Qwen3.5-9B (Q4_K_M GGUF, llama.cpp server), Apache-2.0 |
+| D-014 | 1 | Training text keeps alef and alef-maksura spelling (`unify_alef: false`); diacritics still stripped |
+| D-015 | 1 | Tokenizer design: byte-level BPE, Arabic-aware pre-tokenizer, fixed control tokens, atomic PII placeholders |
+| D-016 | 1 | Fertility eval sets: real where legally available, Qwen-generated (labelled synthetic) for Emirati, Arabizi, mixed |
 
 ---
 
@@ -198,3 +201,55 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   quality check of Qwen's output is poor.
 - **Revisit if:** a native-speaker review of the pilot finds Qwen's Gulf Arabic or Arabizi
   unnatural.
+
+## D-014 · Phase 1 · Keep alef spelling in training text
+
+- **Decision:** From Phase 1 on, every training-data config sets `unify_alef: false`: أ/إ/آ/ٱ and
+  ى stay as written. Diacritics are still stripped (`strip_diacritics: true`).
+- **Why:** DanaLM *writes* replies. Unifying would teach it non-standard spelling (إلى → الي,
+  أنا → انا), which is fine for a classifier but visible in generated text. Recommended in the
+  Phase 0 report and approved with the owner's "go" (2026-09-23).
+- **Alternatives:** Unify (fewer surface forms, slightly better for pure classification).
+- **Note:** `configs/data/smoke.yaml` keeps the original script's settings on purpose; it tests
+  the imported behavior.
+
+## D-015 · Phase 1 · Tokenizer design
+
+- **Decision:**
+  - **Model:** byte-level BPE with no normalizer inside the tokenizer: `normalize()` runs before
+    it, at training and at inference. Every script (Arabic, English, emoji, anything unseen)
+    round-trips losslessly, and no unknown token is needed.
+  - **Pre-tokenizer:** the GPT-4/Llama-3 regex, extended with `\p{M}` so diacritics never split
+    an Arabic word. It comes in two variants: `standard` (digits are always separate chunks of
+    up to 3) and `arabizi` (a digit inside a word stays with it, as in "3andi", "ma3a", "sa7").
+  - **Control tokens:** `<|endoftext|>` (id 0: end of text and document separator),
+    `<|pad|>` (id 1), `<|user|>`, `<|assistant|>`, and 8 `<|reserved_i|>` for later phases.
+  - **PII placeholders:** the 7 placeholders (`<URL> <EMAIL> <EID> <IBAN> <CARD> <PHONE>
+    <NUM>`) are atomic, non-special tokens at the end of the vocabulary. They are cut from the
+    training text so BPE never learns fragments of them, and they survive decoding.
+  - **Vocabulary:** candidate sizes 16,384 / 24,576 / 32,768 (multiples of 128 for GPU
+    matmuls).
+  - **Training data:** a ~790M-character, licence-checked sample of the planned pretraining
+    sources (see DATA_LEDGER).
+- **Why:** Byte-level BPE is the standard for decoder LMs (GPT, Llama, Qwen), and a lossless
+  round trip matters when the model has to reproduce exact JSON. Placeholders must be one token
+  each, otherwise the model can mangle them in replies.
+- **Alternatives:** SentencePiece unigram (common for multilingual models, but needs byte
+  fallback and gives less control over pre-splitting); WordPiece (BERT-style, lossy).
+
+## D-016 · Phase 1 · Fertility evaluation sets
+
+- **Decision:** 10 held-out sets across the five varieties in the brief (MSA, Gulf Arabic,
+  English, Arabizi, mixed). They use real text where a legal source exists: FineWeb-2,
+  Wikipedia, the Najdi dialect set, MASSIVE ar-SA test and CLINC150 test, plus mixed sentences
+  mined from web text. Emirati, Arabizi and mixed customer-service messages come from the Qwen
+  teacher and are labelled "synthetic, not checked by a native speaker". None of these texts are
+  used for training.
+- **Teacher finding:** Asked plainly for Emirati Arabic, Qwen3.5-9B wrote mostly Egyptian-style
+  dialect ("عايز", "ليه", "مش") and near-meaningless Arabizi. With prompts that list Gulf words
+  to use and words to avoid, give example messages, and drop near-copies of the examples, the
+  output became clearly Gulf-like but still contains some Egyptian forms.
+- **Consequences:** For fertility this is acceptable, since tokenization cost barely depends on
+  which dialect the text is in. For Phase 2b training data it is not: it needs a native-speaker
+  review, and possibly a larger Qwen3.5 model (Apache-2.0 family) with CPU offload if the 9B
+  model stays weak.

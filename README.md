@@ -5,10 +5,25 @@ service in Gulf Arabic, English, Arabizi and mixed text. For each customer messa
 strict JSON, `{"intent": "...", "reply": "..."}`. It is meant to run quantized on a CPU or phone:
 it answers the easy majority of messages on-device and hands the rest to a bigger model or a human.
 
-**Status:** Phase 1 (tokenizer) is done. `danalm-v1` is a 16,384-token byte-level BPE for
-Arabic, English and Arabizi. Against Qwen3.5's 248k-token tokenizer, it needs 14% fewer tokens
-on Gulf Arabic and 8% fewer on MSA (see
-[docs/results/phase1_tokenizer.md](docs/results/phase1_tokenizer.md)).
+**Status:** Phase 2 (data) is done, and Phase 3 (model) is next.
+
+- **Tokenizer (Phase 1):** `danalm-v1` is a 16,384-token byte-level BPE for Arabic, English and
+  Arabizi. Against Qwen3.5's 248k-token tokenizer, it needs 14% fewer tokens on Gulf Arabic and
+  8% fewer on MSA ([results](docs/results/phase1_tokenizer.md)).
+- **Pretraining corpus (Phase 2a):** 1.495B tokens from 10 openly licensed sources: 64% Arabic
+  (including 300M tokens of Najdi dialect) and 36% English. It is cleaned, deduplicated,
+  tokenized, and checked by decoding sample documents back to their text
+  ([results](docs/results/phase2_data.md)).
+- **SFT data (Phase 2b):** 18,233 customer-service examples covering 21 intents, in Gulf Arabic,
+  English, Arabizi and mixed text. A local Qwen3.5-35B-A3B teacher wrote them. Filters removed
+  non-Gulf dialect, formal Arabic, and replies that claim actions the assistant cannot take. A
+  blind judge then agreed with 87.3% of the labels
+  ([teacher pilot](docs/results/phase2_teacher_pilot.md), [results](docs/results/phase2_data.md)).
+- **Open:**
+  - The human-written test set needs a native Gulf Arabic speaker.
+  - The Arabizi replies and the `other` intent need another pass before SFT training (D-022 in
+    the decision log).
+
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
 choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
 token count, is in [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).
@@ -50,14 +65,35 @@ Run these one at a time: each target is CPU- or GPU-heavy.
 | `make tokenizer-eval` | Fertility on 10 held-out sets vs Jais and Qwen3.5, applying the decision rules fixed in advance | ~1 min |
 | `make tokenizer-final` | Trains `danalm-v1` and writes token counts into the data ledger | ~2 min |
 
+### Phase 2: data
+
+Run these one at a time as well.
+
+- **Disk:** the corpus needs ~19 GB (8.1 GB raw, 7.9 GB cleaned, 3.0 GB of token shards).
+- **Teacher:** the SFT scripts need a local llama.cpp server and the Qwen3.5-35B-A3B GGUF named
+  in `configs/teacher/qwen35_35b_a3b.yaml`. It uses about 10 GB of VRAM and up to 26 GB of RAM.
+- **Crash safety:** teacher answers are saved as they arrive, so rerunning a crashed job
+  resumes it.
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `make pretrain-data` | Samples the 10 corpus sources at pinned revisions, cleans them, writes 100M-token uint16 shards and checks them against the text | ~40 + 70 + 16 min |
+| `uv run python scripts/generate_sft.py --config configs/sft/full.yaml` | Generates ~30k SFT examples with the teacher and filters them | ~4.6 h |
+| `uv run python scripts/verify_sft.py --config configs/sft/full.yaml` | The judge re-labels every kept message without seeing the intended label | ~31 min |
+| `uv run python scripts/build_sft_dataset.py --config configs/sft/build.yaml` | Keeps the examples the judge agreed with and splits train/val | seconds |
+| `uv run python scripts/phase2_report.py --config configs/data/phase2_report.yaml` | Writes `docs/results/phase2_data.md` from the outputs | seconds |
+| `uv run python scripts/check_overlap.py --config configs/data/overlap.yaml` | Fails if a test message is too close to any training text (for the human test set) | not measured yet |
+
 ## Repository layout
 
 ```text
 configs/       YAML configs; base.yaml is inherited by all of them
-docs/          project brief, decision log, data ledger, results/ (measured results per phase)
+docs/          project brief, decision log, data ledger, test-set guide,
+               results/ (measured results per phase)
 scripts/       command-line entry points
-src/danalm/    library: config, seeding, run tracking, data pipeline, HF sampler, ledger,
-               teacher client, tokenizer
+src/danalm/    library: config, seeding, run tracking, data pipeline and token shards,
+               HF sampler, ledger, dialect and reply checks, teacher server and client
+               (with resumable answer logs), tokenizer
 tests/         unit tests and tiny synthetic fixtures
 data/ runs/ artifacts/   gitignored: datasets, run records, tokenizers and checkpoints
 ```

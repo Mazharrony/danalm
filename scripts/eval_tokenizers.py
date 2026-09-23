@@ -16,7 +16,7 @@ from huggingface_hub import hf_hub_download
 from tokenizers import Tokenizer
 
 from danalm.config import config_from_cli
-from danalm.data.pipeline import detect_lang, normalize
+from danalm.data.pipeline import PLACEHOLDER, detect_lang, normalize
 from danalm.tokenizer.fertility import fertility, train_flops_per_token
 from danalm.utils.run import start_run
 from danalm.utils.seed import set_seed
@@ -42,6 +42,9 @@ def load_set(spec: dict[str, Any], e: dict[str, Any], seed: int) -> list[str]:
         ]
     if "keep_langs" in spec:
         texts = [t for t in texts if detect_lang(t) in spec["keep_langs"]]
+    # Drop PII placeholders: ours encode them as one token, other tokenizers as ~3, which
+    # would bias the comparison. Fertility is measured on natural text only.
+    texts = [" ".join(PLACEHOLDER.sub(" ", t).split()) for t in texts]
     texts = [t for t in texts if t]
     random.Random(seed).shuffle(texts)
     return texts[: e["max_texts"]]
@@ -111,7 +114,8 @@ def to_markdown(cfg: dict[str, Any], sets: list[dict], results: dict, summary: d
         "",
         "**Fertility** = tokens per word; lower is better. Words are whitespace-separated units of "
         "the normalized text (`danalm.data.pipeline.normalize`, diacritics stripped, alef forms "
-        "kept), identical for every tokenizer. No special tokens are added.",
+        "kept), identical for every tokenizer. No special tokens are added, and PII placeholders "
+        "are removed so no tokenizer gets credit for them.",
         "",
         "## Evaluation sets (held out: never used to train a DanaLM tokenizer)",
         "",

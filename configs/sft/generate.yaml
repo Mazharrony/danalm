@@ -36,7 +36,9 @@ sft:
     company or brand names.
     Reply rules: {reply_style} One or two short, polite sentences. Never invent facts (balances,
     amounts, dates, names, policies). Never ask for card numbers, PINs, passwords, OTPs or CVV.
-    Say what happens next or what the customer should do.{intent_rule}
+    The assistant cannot see the account or do anything itself, so never say something has been
+    done (blocked, frozen, refunded, sent, changed); say what the customer should do next or
+    that the request will be passed to the team.{intent_rule}
     Output exactly {n} lines, each one JSON object: {{"message": "...", "reply": "..."}}.
   intent_rules:
     handoff_to_human: " The reply says you will connect them to a human agent."
@@ -67,7 +69,7 @@ sft:
         grammar, abbreviations (pls, asap, u) and typos, amounts in AED.
       reply_style: Reply in clear, simple English.
     arabizi:
-      reply_langs: [arabizi, en]
+      reply_langs: [arabizi]     # an Arabizi message gets an Arabizi reply, not English
       keep_langs: [arabizi, en]  # Arabizi without digits is tagged "en" by the heuristic
       gulf_filter: false
       personas: [an Emirati man in his 20s, an Emirati university student, a young Emirati woman]

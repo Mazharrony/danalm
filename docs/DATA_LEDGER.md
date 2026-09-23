@@ -34,6 +34,8 @@ filtering. Tokens are counted on the kept text with the tokenizer named in brack
 | tokenizer-corpus/bitext-telco | bitext/Bitext-telco-llm-chatbot-training-dataset `default/train/*.parquet` | `45588345` | CDLA-Sharing-1.0 | synthetic (by Bitext) | 2026-09-23 | tokenizer training (Phase 1) | 26,000 → 25,961 | 14,068,652 | 2,180,712 | 3,305,755 (danalm-v1) | 26 row groups; English telecom requests and answers |
 | tokenizer-corpus/clinc-train | clinc/clinc_oos `plus/train-*.parquet` | `155b9c71` | CC-BY-3.0 | real (crowdsourced) | 2026-09-23 | tokenizer training (Phase 1) | 15,250 → 15,120 | 607,188 | 126,663 | 164,838 (danalm-v1) | 16 row groups; English assistant queries incl. out-of-scope (train split only) |
 | tokenizer-corpus/massive-ar-train | AmazonScience/massive `ar-SA/train/*.parquet` | `ed58ac42` | CC-BY-4.0 | real (localized by native speakers) | 2026-09-23 | tokenizer training (Phase 1) | 11,514 → 10,403 | 539,448 | 58,251 | 87,184 (danalm-v1) | 12 row groups; Arabic (ar-SA) assistant utterances (train split only) |
+| sft-pilot-9b | teacher: Qwen3.5-9B Q4_K_M (unsloth/Qwen3.5-9B-GGUF) via llama.cpp | `3885219b` | Apache-2.0 (teacher outputs) | synthetic | 2026-09-23 | supervised fine-tuning (Phase 5) | 672 → 486 | 78,816 | 11,554 | — | 84 requests, 34,819 teacher tokens; before judge verification |
+| sft-pilot-35b | teacher: Qwen3.5-35B-A3B UD-Q4_K_XL (unsloth/Qwen3.5-35B-A3B-GGUF) via llama.cpp | `bc014a17` | Apache-2.0 (teacher outputs) | synthetic | 2026-09-23 | supervised fine-tuning (Phase 5) | 672 → 532 | 81,983 | 11,069 | — | 84 requests, 32,662 teacher tokens; before judge verification |
 
 **Total kept so far:** 227,218,465 tokens (danalm-v1).
 <!-- ledger:end -->

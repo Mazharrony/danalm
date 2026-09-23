@@ -27,6 +27,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-019 | 2 | Pretraining corpus: ~1.5B danalm-v1 tokens, ~63% Arabic (incl. 300M Najdi dialect), ~35% English, ~1% domain |
 | D-020 | 2 | Streaming data pipeline (hash-based val split) and uint16 token shards; constant memory at any corpus size |
 | D-021 | 2 | Intent taxonomy: 21 intents (banking 7, telecom 5, delivery 6, cross-domain 3 incl. `other` and `handoff_to_human`) |
+| D-022 | 2 | SFT teacher and judge: Qwen3.5-35B-A3B (won the pre-declared pilot rule); stricter reply and dialect filters |
 
 ---
 
@@ -374,3 +375,33 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   intents cover (exchange rates, opening an account) without a correct label. It now means
   "a greeting or thanks, or a request that no other intent covers". This matches the product
   logic: whatever the small model cannot handle is routed to a bigger model or a person.
+
+## D-022 · Phase 2 · SFT teacher and judge: Qwen3.5-35B-A3B; stricter filters
+
+- **Decision:** The full SFT run uses Qwen3.5-35B-A3B (UD-Q4_K_XL, Apache-2.0, experts in RAM)
+  as both the teacher and the blind judge, replacing the 9B.
+- **Evidence** (pilot: 84 identical requests per teacher; full tables in
+  [results/phase2_teacher_pilot.md](results/phase2_teacher_pilot.md)). The 35B made 71.0%
+  usable examples (passing every filter, with the judge agreeing) against 61.6% for the 9B,
+  +15%. Its non-Gulf dialect rate was 2.9% against 16.0% (−82%), and it produced 58 usable
+  code-mixed messages to the 9B's 15. It is 3.5× slower (50 vs 173 tok/s). The rule was
+  committed before the results (`0953ee2`), and both quality bars passed; the full run fits
+  the 10 h budget (8.7 h estimated).
+- **Caveat:** the judge is the 35B itself, so the +15% may carry some self-preference. The
+  dialect-rate difference does not depend on the judge. No native speaker has reviewed the
+  output yet.
+- **Filters added after reading the pilot samples:**
+  1. Replies that claim an action was done ("your card has been blocked", "تم ...") are
+     rejected, and the prompt now says the assistant cannot act. These were 5–9% of usable
+     replies, and they are dangerous because a customer might believe them.
+  2. The dialect check now sees through attached و/ف ("ومفيش") and catches the "ما ...ش"
+     negation.
+  3. Formal MSA words in Gulf messages are rejected ("لماذا", "اريد"). "محتاج" is no longer
+     flagged, since Gulf Arabic uses it too.
+  4. An Arabizi message must get an Arabizi reply: the 9B answered 50% of them in English.
+
+  Re-scored on the pilot, usable examples fall to 64.3% (35B) and 50.1% (9B), which widens the
+  gap.
+- **Alternatives:** Keep the 9B (twice as fast, but lower quality in exactly the Gulf and mixed
+  varieties the product needs). Qwen3.5-27B dense (likely stronger, but about 5–10 tok/s with
+  partial offload, so days for the full run).

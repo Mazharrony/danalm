@@ -20,10 +20,11 @@ from datasketch import MinHashLSH
 
 from danalm.config import config_from_cli
 from danalm.data import ledger
-from danalm.data.dialect import non_gulf_markers
+from danalm.data.dialect import msa_markers, non_gulf_markers
 from danalm.data.hub import text_stats
 from danalm.data.intents import load_intents
 from danalm.data.pipeline import detect_lang, minhash, normalize
+from danalm.data.reply_checks import claims_done_action
 from danalm.teacher.client import chat, parse_json_objects
 from danalm.teacher.server import TeacherServer
 from danalm.utils.run import start_run, write_provenance
@@ -66,8 +67,9 @@ def build_prompt(spec: dict[str, Any], sft: dict[str, Any]) -> str:
 
 
 class Filter:
-    """Normalizes generated examples and rejects bad fields, wrong language, non-Gulf dialect,
-    and exact or near duplicates (across the whole run)."""
+    """Normalizes generated examples and rejects bad fields, wrong language, replies that claim
+    an action was done, non-Gulf dialect or formal MSA in Gulf messages, and exact or near
+    duplicates (across the whole run)."""
 
     def __init__(self, sft: dict[str, Any]) -> None:
         self.sft = sft
@@ -87,8 +89,12 @@ class Filter:
             return None, f"message_lang_{lang}"
         if reply_lang not in v["reply_langs"]:
             return None, f"reply_lang_{reply_lang}"
+        if claims_done_action(reply):
+            return None, "reply_claims_action"
         if v["gulf_filter"] and (non_gulf_markers(msg) or non_gulf_markers(reply)):
             return None, "non_gulf_dialect"
+        if v["gulf_filter"] and msa_markers(msg):
+            return None, "msa_in_message"
         key = msg.lower()
         if key in self.seen:
             return None, "duplicate"

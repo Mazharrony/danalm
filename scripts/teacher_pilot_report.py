@@ -190,7 +190,7 @@ def main() -> None:
         for v in VARIETIES:
             pool = [x for x in runs[k]["rows"] if x["variety"] == v and x["agree"]]
             for x in rng.sample(pool, min(r["samples_per_variety"], len(pool))):
-                lines.append(f"- `{v}` **{x['intent']}**: {x['message']}  \n  → {x['reply']}")
+                lines.append(f"- `{v}` **{x['intent']}**: {x['message']}<br>→ {x['reply']}")
         lines.append("")
     Path(r["results_md"]).write_text("\n".join(lines), encoding="utf-8", newline="\n")
     print(json.dumps(d, indent=2))

@@ -4,7 +4,7 @@ Measured on 2026-09-23: the same 84 requests (21 intents × 4 varieties, 8 examp
 
 Caveat: the judge is the candidate model, so it may slightly favour its own phrasing. No native speaker has reviewed any of this yet.
 
-| | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL |
+| | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM) |
 |---|---:|---:|
 | Examples parsed | 672 | 672 |
 | Kept after filters | 486 (72.3%) | 532 (79.2%) |
@@ -17,7 +17,7 @@ Caveat: the judge is the candidate model, so it may slightly favour its own phra
 
 ## Per variety
 
-| Variety | Metric | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL |
+| Variety | Metric | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM) |
 |---|---|---:|---:|
 | gulf_arabic | usable / parsed | 114/168 | 149/169 |
 | gulf_arabic | non-Gulf rate | 12.0% | 1.8% |
@@ -38,7 +38,7 @@ Caveat: the judge is the candidate model, so it may slightly favour its own phra
 
 ## Rejection reasons
 
-| Reason | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL |
+| Reason | Qwen3.5-9B (Q4_K_M) | Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM) |
 |---|---:|---:|
 | bad_fields | 0 | 3 |
 | duplicate | 16 | 16 |
@@ -53,14 +53,14 @@ Caveat: the judge is the candidate model, so it may slightly favour its own phra
 ## Most common judge disagreements
 
 - **Qwen3.5-9B (Q4_K_M):** lost_or_stolen_card → card_not_working (7), missing_or_wrong_item → network_or_internet_issue (7), balance_or_statement → card_not_working (6), fees_and_charges → unrecognized_transaction (5), network_or_internet_issue → other (5), missing_or_wrong_item → order_status (5), sim_or_number → network_or_internet_issue (3), roaming → order_status (3)
-- **Qwen3.5-35B-A3B (UD-Q4_K_XL:** other → handoff_to_human (4), card_not_working → lost_or_stolen_card (3), refund_request → missing_or_wrong_item (3), refund_request → failed_delivery (3), refund_request → order_status (3), unrecognized_transaction → other (2), fees_and_charges → unrecognized_transaction (2), loans_and_credit → card_not_working (2)
+- **Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM):** other → handoff_to_human (4), card_not_working → lost_or_stolen_card (3), refund_request → missing_or_wrong_item (3), refund_request → failed_delivery (3), refund_request → order_status (3), unrecognized_transaction → other (2), fees_and_charges → unrecognized_transaction (2), loans_and_credit → card_not_working (2)
 
 ## Decision
 
 Rule: the candidate wins if usable/parsed is at least 10% higher **or** its non-Gulf rate is at least 30% lower, **and** the full run fits in 10 h.
 
 - Quality gain: +15.2%; non-Gulf drop: +81.9%; full run: 8.7 h (candidate) vs 4.0 h (baseline)
-- → **Qwen3.5-35B-A3B (UD-Q4_K_XL** (better and fits the time budget)
+- → **Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM)** (better and fits the time budget)
 
 ## Random samples (usable examples)
 
@@ -79,7 +79,7 @@ Rule: the candidate wins if usable/parsed is at least 10% higher **or** its non-
 - `mixed` **change_delivery_details**: Change delivery time من الساعة 2 ظهرا إلى 6 مساء because I'm in a meeting.<br>→ يمكنك تغيير الوقت إلى 6 مساء، هل تريد أن نعيد جدولة الطلب الآن؟
 - `mixed` **network_or_internet_issue**: توقف الإي نت فجأة and the screen says no connection, ما نعرفو شو نفعل؟<br>→ يرجى تجربة كابل الشبكة مرة أخرى ثم أخبرنا إذا استمرت المشكلة لنرسل فني.
 
-### Qwen3.5-35B-A3B (UD-Q4_K_XL
+### Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM)
 
 - `gulf_arabic` **transfer_issue**: شو صار بالمعاملة؟ ما وصلتش الزبون وانا ضايقة.<br>→ ما عليك، ارجو تزويدنا برقم التحويل لنفحص الوضع فورا.
 - `gulf_arabic` **refund_request**: زبطت شيء غلط، ابغي استرجاع الفلوس.<br>→ حاضر، نبدأ عملية الاسترجاع وسنرسل لك تأكيدا قريبا.

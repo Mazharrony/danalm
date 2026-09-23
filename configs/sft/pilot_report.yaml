@@ -6,7 +6,7 @@ run_name: sft-pilot-report
 
 report:
   baseline: {name: Qwen3.5-9B (Q4_K_M), dir: "${paths.data_dir}/sft/sft-pilot-9b"}
-  candidate: {name: Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM), dir: "${paths.data_dir}/sft/sft-pilot-35b"}
+  candidate: {name: "Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM)", dir: "${paths.data_dir}/sft/sft-pilot-35b"}
   judge: Qwen3.5-35B-A3B (blind re-labelling of both runs)
   full_run_target: 20000       # usable examples wanted from the full SFT run
   decision:

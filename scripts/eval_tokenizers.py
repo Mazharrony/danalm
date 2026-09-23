@@ -91,10 +91,10 @@ def decide(e: dict[str, Any], by_variety: dict[str, dict[str, float]]) -> dict[s
         flops_per_word[v] = overall * flops
     best = min(flops_per_word.values())
     chosen = min(v for v in sizes if flops_per_word[v] <= best * (1 + rules["vocab_tie"]))
-    return {
+    return {  # string keys: W&B summaries and JSON need them
         "pretokenizer": pretokenizer,
-        "pretokenizer_check": per_size,
-        "flops_per_word": flops_per_word,
+        "pretokenizer_check": {str(v): c for v, c in per_size.items()},
+        "flops_per_word": {str(v): f for v, f in flops_per_word.items()},
         "vocab_size": chosen,
         "tokenizer": name[pretokenizer, chosen],
     }

@@ -24,22 +24,29 @@ def parquet_files(tmp_path):
     return paths
 
 
+def sample(paths: list[str], target_chars: int, seed: int) -> tuple[list[str], list]:
+    """Consume the streaming sampler into (texts, row groups read)."""
+    units: list = []
+    texts = list(
+        sample_parquet(fsspec.filesystem("file"), paths, ["text"], target_chars, seed, units)
+    )
+    return texts, units
+
+
 def test_sampling_stops_at_the_character_target(parquet_files):
-    fs = fsspec.filesystem("file")
-    texts, units = sample_parquet(fs, parquet_files, ["text"], target_chars=500, seed=0)
+    texts, units = sample(parquet_files, target_chars=500, seed=0)
     assert 500 <= sum(map(len, texts)) < 500 + 30
     assert len(units) == len({tuple(u) for u in units})
 
 
 def test_sampling_is_seeded(parquet_files):
-    fs = fsspec.filesystem("file")
-    first = sample_parquet(fs, parquet_files, ["text"], 300, seed=1)[0]
-    assert sample_parquet(fs, parquet_files, ["text"], 300, seed=1)[0] == first
-    assert sample_parquet(fs, parquet_files, ["text"], 300, seed=2)[0] != first
+    first = sample(parquet_files, 300, seed=1)[0]
+    assert sample(parquet_files, 300, seed=1)[0] == first
+    assert sample(parquet_files, 300, seed=2)[0] != first
 
 
 def test_target_zero_reads_everything(parquet_files):
-    texts, units = sample_parquet(fsspec.filesystem("file"), parquet_files, ["text"], 0, seed=0)
+    texts, units = sample(parquet_files, 0, seed=0)
     assert (len(texts), len(units)) == (100, 10)
 
 

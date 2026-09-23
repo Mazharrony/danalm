@@ -30,10 +30,12 @@ def main() -> None:
     for raw in sample["sources"]:
         src = HubSource(**raw)
         start = time.time()
-        texts, manifest = sample_source(src, seed=source_seed(cfg["seed"], src.name))
         with open(out / f"{src.name}.jsonl", "w", encoding="utf-8", newline="\n") as fh:
-            for text in texts:
-                fh.write(json.dumps({"text": text, "source": src.name}, ensure_ascii=False) + "\n")
+
+            def write(text: str, fh=fh, name=src.name) -> None:
+                fh.write(json.dumps({"text": text, "source": name}, ensure_ascii=False) + "\n")
+
+            manifest = sample_source(src, seed=source_seed(cfg["seed"], src.name), write=write)
         manifest["seconds"] = round(time.time() - start, 1)
         manifests.append(manifest)
         entries.append(

@@ -1,61 +1,63 @@
-# Phase 1 tokenizer-training corpus: a seeded sample of the planned pretraining sources
-# (licences checked in docs/DATA_LEDGER.md). About 790M characters, mixed by characters
-# roughly like the pretraining plan: MSA 45%, Najdi dialect 14%, English 38%, domain ~3%.
-#   1. uv run python scripts/sample_corpus.py  --config configs/data/tokenizer_corpus.yaml
-#   2. uv run python scripts/prepare_data.py   --config configs/data/tokenizer_corpus.yaml
+# Phase 2a pretraining corpus: ~1.5B danalm-v1 tokens from the licence-checked sources in
+# docs/DATA_LEDGER.md. Character targets = token targets / tokens-per-character measured on
+# the Phase 1 sample (danalm-v1): arb 0.277, ars 0.312, wikipedia-ar 0.286, fineweb-edu 0.260,
+# wikipedia-en 0.292. Mix and reasons: docs/DECISIONS.md D-019.
+#   1. uv run python scripts/sample_corpus.py   --config configs/data/pretrain_corpus.yaml
+#   2. uv run python scripts/prepare_data.py    --config configs/data/pretrain_corpus.yaml
+#   3. uv run python scripts/tokenize_corpus.py --config configs/data/pretrain_corpus.yaml
 base: ../base.yaml
-run_name: tokenizer-corpus
+run_name: pretrain-corpus
 
 sample:
-  out_dir: ${paths.data_dir}/raw/tokenizer_corpus
-  used_for: tokenizer training (Phase 1)
+  out_dir: ${paths.data_dir}/raw/pretrain_corpus
+  used_for: pretraining (Phase 4)
   sources:
-    - name: fineweb2-arb
+    - name: fineweb2-arb            # ~550M tokens
       repo_id: HuggingFaceFW/fineweb-2
       revision: af9c13333eb981300149d5ca60a8e9d659b276b9
       files: data/arb_Arab/train/*.parquet
       text_columns: [text]
-      target_chars: 290000000
+      target_chars: 1985000000
       licence: ODC-By-1.0 (+ Common Crawl ToU)
       kind: real
       description: Standard Arabic web text
-    - name: fineweb2-ars
+    - name: fineweb2-ars            # ~300M tokens, about 70% of the whole Najdi subset
       repo_id: HuggingFaceFW/fineweb-2
       revision: af9c13333eb981300149d5ca60a8e9d659b276b9
       files: data/ars_Arab/train/*.parquet
       text_columns: [text]
-      target_chars: 112000000
+      target_chars: 962000000
       licence: ODC-By-1.0 (+ Common Crawl ToU)
       kind: real
       description: Najdi (Saudi) dialect web text, the closest open Gulf-like dialect
-    - name: wikipedia-ar
+    - name: wikipedia-ar            # ~100M tokens
       repo_id: wikimedia/wikipedia
       revision: b04c8d1ceb2f5cd4588862100d08de323dccfbaa
       files: 20231101.ar/*.parquet
       text_columns: [text]
-      target_chars: 64000000
+      target_chars: 350000000
       licence: CC-BY-SA-3.0 + GFDL
       kind: real
       description: Arabic Wikipedia
-    - name: fineweb-edu
+    - name: fineweb-edu             # ~480M tokens
       repo_id: HuggingFaceFW/fineweb-edu
       revision: 87f09149ef4734204d70ed1d046ddc9ca3f2b8f9
       files: sample/10BT/*.parquet
       text_columns: [text]
-      target_chars: 256000000
+      target_chars: 1848000000
       licence: ODC-By-1.0 (+ Common Crawl ToU)
       kind: real
       description: Educational English web text
-    - name: wikipedia-en
+    - name: wikipedia-en            # ~50M tokens
       repo_id: wikimedia/wikipedia
       revision: b04c8d1ceb2f5cd4588862100d08de323dccfbaa
       files: 20231101.en/*.parquet
       text_columns: [text]
-      target_chars: 48000000
+      target_chars: 171000000
       licence: CC-BY-SA-3.0 + GFDL
       kind: real
       description: English Wikipedia
-    - name: bitext-support
+    - name: bitext-support          # the domain sets are small: take all of them (~13M tokens)
       repo_id: bitext/Bitext-customer-support-llm-chatbot-training-dataset
       revision: f93dfd8473c480417bd50123f605f11d638f014c  # refs/convert/parquet
       files: default/train/*.parquet
@@ -101,18 +103,26 @@ sample:
       kind: real (localized by native speakers)
       description: Arabic (ar-SA) assistant utterances (train split only)
 
-data:  # cleaning (scripts/prepare_data.py); the val split is held out for fertility evaluation
+data:  # streaming cleaning (scripts/prepare_data.py); val = held-out loss during pretraining
   inputs: ["${sample.out_dir}/*.jsonl"]
-  out_dir: ${paths.data_dir}/tokenizer_corpus
+  out_dir: ${paths.data_dir}/pretrain_corpus
   text_field: text
   strip_diacritics: true
-  unify_alef: false            # D-014: keep standard spelling, the model writes replies
+  unify_alef: false            # D-014
   min_chars: 10
-  max_chars: 1000000           # keep long documents (the old 4000 was meant for chat messages)
+  max_chars: 1000000
   min_letter_ratio: 0.5
   repetitive_min_words: 6
-  min_unique_word_ratio: 0.1   # long documents repeat words naturally; sources are pre-filtered
+  min_unique_word_ratio: 0.1
   near_dup_threshold: 0        # sources are deduplicated upstream; exact dedup still runs
   minhash_num_perm: 64
   shingle_words: 3
-  val_frac: 0.02
+  val_frac: 0.005              # ~7M tokens of held-out text, plenty for a stable val loss
+
+tokenize:  # scripts/tokenize_corpus.py
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  tokenizer_name: danalm-v1
+  eos_token: "<|endoftext|>"
+  shard_tokens: 100000000      # 100M tokens = 200 MB per uint16 shard
+  batch_docs: 1000
+  out_dir: ${paths.data_dir}/pretrain_tokens

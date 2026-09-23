@@ -24,6 +24,8 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-016 | 1 | Fertility eval sets: real where legally available, Qwen-generated (labelled synthetic) for Emirati, Arabizi, mixed |
 | D-017 | 1 | Tokenizer `danalm-v1`: 16,384-token byte-level BPE, `standard` pre-tokenizer, chosen by pre-declared rules |
 | D-018 | 1 | Text written or edited by closed AI tools: evaluation only, never training |
+| D-019 | 2 | Pretraining corpus: ~1.5B danalm-v1 tokens, ~63% Arabic (incl. 300M Najdi dialect), ~35% English, ~1% domain |
+| D-020 | 2 | Streaming data pipeline (hash-based val split) and uint16 token shards; constant memory at any corpus size |
 
 ---
 
@@ -299,3 +301,50 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   forms, and was not used. All versions are archived.
 - **Alternatives:** Native-speaker correction, which is still the goal for Phase 2 data and the
   Phase 2c test set; or keeping Qwen's raw output as the eval set.
+
+## D-019 · Phase 2 · Pretraining corpus: ~1.5B tokens, ~63% Arabic
+
+- **Decision:** About 1.49B danalm-v1 tokens (`configs/data/pretrain_corpus.yaml`):
+
+  | Source | Tokens | Share |
+  |---|---:|---:|
+  | FineWeb-2 MSA | 550M | 37% |
+  | FineWeb-2 Najdi dialect | 300M | 20% |
+  | Arabic Wikipedia | 100M | 7% |
+  | FineWeb-Edu | 480M | 32% |
+  | English Wikipedia | 50M | 3% |
+  | Domain sets (Bitext ×3, CLINC150 train, MASSIVE ar-SA train) | ~13M | 1% |
+
+  0.5% of documents are held out for validation (~7M tokens). Character targets come from the
+  tokens-per-character ratios measured in Phase 1.
+- **Why:**
+  - **Size:** the brief asks for 1–2B tokens. 1.5B is about 30 tokens per parameter for a ~50M
+    model. That is past the compute-optimal ~20, which suits a small model that has to be cheap
+    at inference.
+  - **Arabic share:** Arabic gets ~63% because it is the harder language (rich morphology,
+    dialects) and the product's differentiator; small models learn English from less data.
+  - **Najdi:** it is the only open Gulf-like dialect source. 300M tokens (about 70% of the
+    subset) maximizes dialect exposure while keeping forum boilerplate to a fifth of the mix.
+  - **Arabic Wikipedia:** capped at 100M tokens because much of it is bot-generated stubs.
+  - **Domain sets:** tiny, but on-topic.
+- **Alternatives:** 1B tokens (faster Phase 4, about compute-optimal); 2B tokens (a stronger
+  model, ~30% longer training); a 50/50 Arabic/English mix.
+- **Revisit if:** Phase 3 sizing changes the parameter count a lot, or the Phase 4 pilot shows
+  validation loss still dropping steeply at the end.
+
+## D-020 · Phase 2 · Streaming pipeline and token shards
+
+- **Decision:** Every data step now streams, so memory stays constant at any corpus size:
+  - **Sampler:** writes each document to disk as it arrives, with one parquet row group in
+    memory at a time.
+  - **Cleaning:** streams documents into train/val JSONL, keeping only 16-byte hashes for exact
+    deduplication. Validation documents are picked by a seeded hash of each document, not by a
+    global shuffle.
+  - **Tokenization:** a separate step (`scripts/tokenize_corpus.py`). It writes 100M-token
+    uint16 shards with EOS after every document, plus `index.json` and per-source counts in the
+    ledger.
+- **Why:** At 1.5B tokens the old in-memory steps would need about 15 GB for cleaning and 40–50
+  GB for `write_bin`'s Python list of token ids. The owner asked to keep RAM safe after the
+  Phase 1 freeze. The Phase 4 trainer memory-maps the shards.
+- **Consequence:** Phase 1's outputs (corpus split, danalm-v1) came from the old in-memory
+  pipeline. Reproduce them from their recorded commits (up to `579e4b8`).

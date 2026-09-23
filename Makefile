@@ -6,7 +6,7 @@
 # UTF-8 mode: Windows would otherwise write logs in cp1252 and choke on Arabic text.
 export PYTHONUTF8 = 1
 
-.PHONY: setup lint test check check-env data-smoke tokenizer-data synthetic-eval tokenizers tokenizer-eval tokenizer-final
+.PHONY: setup lint test check check-env data-smoke tokenizer-data synthetic-eval tokenizers tokenizer-eval tokenizer-final pretrain-data
 
 setup:  ## create .venv exactly from uv.lock and install the git hooks
 	uv sync --locked
@@ -49,3 +49,9 @@ tokenizer-eval:  ## fertility of all candidates vs Jais and Qwen3.5 -> docs/resu
 tokenizer-final:  ## train the chosen tokenizer (danalm-v1) and fill token counts into the ledger
 	uv run python scripts/train_tokenizer.py --config configs/tokenizer/danalm_v1.yaml $(ARGS)
 	uv run python scripts/update_ledger.py --config configs/ledger/phase1.yaml $(ARGS)
+
+# ---------------------------------------------------------------- Phase 2: data
+pretrain-data:  ## download (~2-3 GB of text columns), clean and tokenize the ~1.5B-token corpus
+	uv run python scripts/sample_corpus.py --config configs/data/pretrain_corpus.yaml $(ARGS)
+	uv run python scripts/prepare_data.py --config configs/data/pretrain_corpus.yaml $(ARGS)
+	uv run python scripts/tokenize_corpus.py --config configs/data/pretrain_corpus.yaml $(ARGS)

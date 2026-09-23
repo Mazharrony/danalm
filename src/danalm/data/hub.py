@@ -7,6 +7,7 @@ is enough to reproduce a sample exactly.
 """
 
 import random
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from datetime import date
 from typing import Any
@@ -30,15 +31,25 @@ class HubSource:
     description: str
 
 
-def sample_source(src: HubSource, seed: int, fs: Any = None) -> tuple[list[str], dict[str, Any]]:
-    """Sample one source from the Hugging Face Hub. Returns (texts, manifest)."""
+def sample_source(
+    src: HubSource, seed: int, write: Callable[[str], None], fs: Any = None
+) -> dict[str, Any]:
+    """Stream a seeded sample of one Hugging Face source to `write` (one call per text).
+
+    Returns the manifest (provenance and counts). Only one row group is in memory at a time.
+    """
     fs = fs or HfFileSystem()
     root = f"datasets/{src.repo_id}@{src.revision}"
     paths = sorted(fs.glob(f"{root}/{src.files}"))
     if not paths:
         raise FileNotFoundError(f"{src.name}: no files match {root}/{src.files}")
-    texts, units = sample_parquet(fs, paths, src.text_columns, src.target_chars, seed)
-    manifest = {
+    units: list[tuple[str, int]] = []
+    stats = {"docs": 0, "chars": 0, "utf8_bytes": 0, "words": 0}
+    for text in sample_parquet(fs, paths, src.text_columns, src.target_chars, seed, units):
+        write(text)
+        for key, value in text_stats([text]).items():
+            stats[key] += value
+    return {
         "name": src.name,
         "repo_id": src.repo_id,
         "revision": src.revision,
@@ -49,27 +60,30 @@ def sample_source(src: HubSource, seed: int, fs: Any = None) -> tuple[list[str],
         "collected_on": date.today().isoformat(),
         "seed": seed,
         "row_groups_read": [[p.removeprefix(f"{root}/"), i] for p, i in units],
-        **text_stats(texts),
+        **stats,
     }
-    return texts, manifest
 
 
 def sample_parquet(
-    fs: Any, paths: list[str], columns: list[str], target_chars: int, seed: int
-) -> tuple[list[str], list[tuple[str, int]]]:
-    """Read seeded-random row groups from parquet `paths` until `target_chars` is reached.
+    fs: Any,
+    paths: list[str],
+    columns: list[str],
+    target_chars: int,
+    seed: int,
+    read: list[tuple[str, int]],
+) -> Iterator[str]:
+    """Yield texts from seeded-random row groups of parquet `paths` until `target_chars` is
+    reached. Every (path, row group) read is appended to `read`.
 
-    Returns the texts and the (path, row group) units that were read. Each file is opened once:
-    big files have multi-MB footers, and re-reading them per row group dominated the runtime.
+    Each file is opened once: big files have multi-MB footers, and re-reading them per row group
+    dominated the runtime.
     """
     handles = {path: fs.open(path) for path in paths}
     files = {path: pq.ParquetFile(fh) for path, fh in handles.items()}
     try:
         units = [(path, i) for path, pf in files.items() for i in range(pf.num_row_groups)]
         random.Random(seed).shuffle(units)
-        texts: list[str] = []
         chars = 0
-        read: list[tuple[str, int]] = []
         for path, group in units:
             rows = files[path].read_row_group(group, columns=columns).to_pylist()
             read.append((path, group))
@@ -77,11 +91,10 @@ def sample_parquet(
                 text = "\n".join(str(row[c]) for c in columns if row.get(c))
                 if not text.strip():
                     continue
-                texts.append(text)
+                yield text
                 chars += len(text)
                 if target_chars and chars >= target_chars:
-                    return texts, read
-        return texts, read
+                    return
     finally:
         for fh in handles.values():
             fh.close()

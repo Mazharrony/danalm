@@ -1,5 +1,5 @@
-"""Raw Arabic / English / Arabizi text -> clean, deduplicated, language-tagged train/val JSONL
--> (optional) tokenized uint16/uint32 .bin files for training.
+"""Raw Arabic / English / Arabizi text -> clean, deduplicated, language-tagged train/val JSONL.
+Token shards for training are written by a separate step (danalm.data.shards).
 
 Adapted from the standalone `data_pipeline.py` (GulfLite data pipeline, step 1). Runs on CPU.
 Inputs: .txt (one sample per line), .jsonl (text in `text_field`), .csv (column `text_field`).
@@ -10,7 +10,6 @@ import csv
 import glob
 import hashlib
 import json
-import random
 import re
 import unicodedata
 from collections import Counter
@@ -38,8 +37,7 @@ class PipelineConfig:
     near_dup_threshold: float  # MinHash Jaccard threshold; 0 disables near-duplicate removal
     minhash_num_perm: int
     shingle_words: int  # word n-gram size of the MinHash shingles
-    val_frac: float
-    tokenizer: str | None  # HF tokenizer path/name -> also write train.bin / val.bin
+    val_frac: float  # share of documents sent to val.jsonl (seeded hash split)
 
 
 # ---------------------------------------------------------------- normalization
@@ -178,7 +176,7 @@ def read_inputs(patterns: list[str], text_field: str) -> Iterator[tuple[str, str
                         yield line, src
 
 
-# ---------------------------------------------------------------- dedup + tokenizing
+# ---------------------------------------------------------------- dedup + split
 def minhash(text: str, num_perm: int, shingle_words: int) -> MinHash:
     """MinHash signature over the lower-cased word n-gram shingles of `text`."""
     mh = MinHash(num_perm=num_perm)
@@ -189,73 +187,59 @@ def minhash(text: str, num_perm: int, shingle_words: int) -> MinHash:
     return mh
 
 
-def write_bin(samples: list[dict], tokenizer_path: str, out_path: Path) -> tuple[int, str]:
-    """Tokenize samples (EOS after each) into one flat token-id file; return (n_tokens, dtype)."""
-    import numpy as np
-    from transformers import AutoTokenizer
-
-    tok = AutoTokenizer.from_pretrained(tokenizer_path)
-    dtype = np.uint16 if len(tok) < 65535 else np.uint32
-    eos = tok.eos_token_id if tok.eos_token_id is not None else 0
-    ids: list[int] = []
-    for s in samples:
-        ids.extend(tok.encode(s["text"], add_special_tokens=False))
-        ids.append(eos)
-    arr = np.array(ids, dtype=dtype)
-    arr.tofile(out_path)
-    return len(arr), dtype.__name__
+def in_val(text: str, seed: int, val_frac: float) -> bool:
+    """Seeded hash split: the same text always lands in the same split, with no shuffling."""
+    digest = hashlib.sha256(f"{seed}:{text}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64 < val_frac
 
 
 # ---------------------------------------------------------------- main
 def run_pipeline(cfg: PipelineConfig, seed: int) -> Counter:
-    """Run every step and write train/val.jsonl (+ .bin) and stats.json to `cfg.out_dir`."""
+    """Clean, deduplicate and tag every input document, streaming them into train/val.jsonl
+    (input order kept) and writing stats.json to `cfg.out_dir`.
+
+    Memory stays flat whatever the corpus size: only 16-byte hashes are kept for exact
+    deduplication (plus MinHash signatures when near-duplicate removal is on, which is meant for
+    small sets). Tokenization is a separate step (danalm.data.shards).
+    """
     out = Path(cfg.out_dir)
     out.mkdir(parents=True, exist_ok=True)
     stats: Counter = Counter()
-    seen: set[str] = set()
-    kept: list[dict] = []
+    seen: set[bytes] = set()
 
     lsh = None
     if cfg.near_dup_threshold > 0:
         lsh = MinHashLSH(threshold=cfg.near_dup_threshold, num_perm=cfg.minhash_num_perm)
 
-    for raw, src in read_inputs(cfg.inputs, cfg.text_field):
-        stats["read"] += 1
-        text = normalize(raw, cfg.strip_diacritics, cfg.unify_alef)
-        ok, reason = quality_ok(text, cfg)
-        if not ok:
-            stats[f"drop_{reason}"] += 1
-            continue
-        h = hashlib.md5(text.lower().encode(), usedforsecurity=False).hexdigest()
-        if h in seen:
-            stats["drop_exact_dup"] += 1
-            continue
-        seen.add(h)
-        if lsh is not None:
-            mh = minhash(text, cfg.minhash_num_perm, cfg.shingle_words)
-            if lsh.query(mh):
-                stats["drop_near_dup"] += 1
+    with (
+        open(out / "train.jsonl", "w", encoding="utf-8", newline="\n") as train,
+        open(out / "val.jsonl", "w", encoding="utf-8", newline="\n") as val,
+    ):
+        for raw, src in read_inputs(cfg.inputs, cfg.text_field):
+            stats["read"] += 1
+            text = normalize(raw, cfg.strip_diacritics, cfg.unify_alef)
+            ok, reason = quality_ok(text, cfg)
+            if not ok:
+                stats[f"drop_{reason}"] += 1
                 continue
-            lsh.insert(h, mh)
-        lang = detect_lang(text)
-        stats[f"lang_{lang}"] += 1
-        kept.append({"text": text, "lang": lang, "source": src})
-
-    random.Random(seed).shuffle(kept)
-    n_val = max(1, int(len(kept) * cfg.val_frac)) if kept else 0
-    splits = {"val": kept[:n_val], "train": kept[n_val:]}
-    for name, rows in splits.items():
-        with open(out / f"{name}.jsonl", "w", encoding="utf-8") as fh:
-            for r in rows:
-                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
-        stats[f"{name}_samples"] = len(rows)
-        stats[f"{name}_chars"] = sum(len(r["text"]) for r in rows)
-
-    if cfg.tokenizer:
-        for name, rows in splits.items():
-            n_tok, dt = write_bin(rows, cfg.tokenizer, out / f"{name}.bin")
-            stats[f"{name}_tokens"] = n_tok
-            stats["token_dtype"] = dt
+            digest = hashlib.md5(text.lower().encode(), usedforsecurity=False).digest()
+            if digest in seen:
+                stats["drop_exact_dup"] += 1
+                continue
+            seen.add(digest)
+            if lsh is not None:
+                mh = minhash(text, cfg.minhash_num_perm, cfg.shingle_words)
+                if lsh.query(mh):
+                    stats["drop_near_dup"] += 1
+                    continue
+                lsh.insert(digest.hex(), mh)
+            lang = detect_lang(text)
+            stats[f"lang_{lang}"] += 1
+            split = "val" if in_val(text, seed, cfg.val_frac) else "train"
+            row = {"text": text, "lang": lang, "source": src}
+            (val if split == "val" else train).write(json.dumps(row, ensure_ascii=False) + "\n")
+            stats[f"{split}_samples"] += 1
+            stats[f"{split}_chars"] += len(text)
 
     (out / "stats.json").write_text(json.dumps(stats, indent=2, ensure_ascii=False), "utf-8")
     return stats

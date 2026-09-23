@@ -6,16 +6,19 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from tokenizers import Tokenizer
 
 from danalm.config import load_config
 from danalm.data.pipeline import (
     PipelineConfig,
     detect_lang,
+    in_val,
     normalize,
     quality_ok,
     read_inputs,
     run_pipeline,
 )
+from danalm.data.shards import ShardWriter, read_shard, tokenize_split
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests" / "fixtures" / "raw"
@@ -200,7 +203,10 @@ def test_pipeline_on_fixture(cfg):
     assert stats["drop_repetitive"] == 1
     assert stats["drop_exact_dup"] == 1
     assert stats["drop_near_dup"] == 1
-    assert (len(train), len(val)) == (11, 2)
+    assert len(train) + len(val) == 13
+    assert (stats["train_samples"], stats["val_samples"]) == (len(train), len(val))
+    assert all(in_val(row["text"], 0, cfg.val_frac) for row in val)
+    assert not any(in_val(row["text"], 0, cfg.val_frac) for row in train)
     assert len(set(texts)) == len(texts)
     assert sum(v for k, v in stats.items() if k.startswith("lang_")) == len(texts)
     assert any("<PHONE>" in t for t in texts)
@@ -226,13 +232,28 @@ def test_missing_inputs_raise(cfg):
         run_pipeline(replace(cfg, inputs=["does/not/exist/*.jsonl"]), seed=0)
 
 
-def test_write_bin_puts_eos_after_every_sample(cfg, tmp_path):
-    tok_dir = make_tiny_tokenizer(tmp_path / "tok")
-    stats = run_pipeline(replace(cfg, tokenizer=str(tok_dir)), seed=0)
-    ids = np.fromfile(Path(cfg.out_dir) / "train.bin", dtype=np.uint16)
-    eos_id = 0  # the only special token, so it gets id 0
+def test_hash_split_is_close_to_val_frac_and_seed_dependent():
+    texts = [f"message number {i}" for i in range(20000)]
+    share = sum(in_val(t, 0, 0.1) for t in texts) / len(texts)
+    assert 0.09 < share < 0.11
+    assert [in_val(t, 0, 0.1) for t in texts] != [in_val(t, 1, 0.1) for t in texts]
 
-    assert stats["token_dtype"] == "uint16"
-    assert len(ids) == stats["train_tokens"]
-    assert (ids == eos_id).sum() == stats["train_samples"]
-    assert ids[-1] == eos_id
+
+# ---------------------------------------------------------------- token shards
+def test_shards_hold_every_token_with_eos_after_each_document(cfg, tmp_path):
+    run_pipeline(cfg, seed=0)
+    tok = Tokenizer.from_file(str(make_tiny_tokenizer(tmp_path / "tok") / "tokenizer.json"))
+    eos_id = tok.token_to_id("<eos>")
+    writer = ShardWriter(tmp_path / "shards", "train", shard_tokens=100)
+    (tmp_path / "shards").mkdir()
+    counts = tokenize_split(Path(cfg.out_dir) / "train.jsonl", tok, eos_id, writer, batch_docs=4)
+    files = writer.close()
+
+    ids = np.concatenate([read_shard(tmp_path / "shards" / f["file"]) for f in files])
+    rows = read_jsonl(Path(cfg.out_dir) / "train.jsonl")
+    assert all(f["tokens"] == 100 for f in files[:-1]) and 0 < files[-1]["tokens"] <= 100
+    assert len(ids) == sum(c["tokens"] for c in counts.values()) + len(rows)  # + one EOS each
+    assert (ids == eos_id).sum() == len(rows) and ids[-1] == eos_id
+    assert sum(c["docs"] for c in counts.values()) == len(rows)
+    first_doc = ids[: int(np.argmax(ids == eos_id))]
+    assert tok.decode(first_doc.tolist()) == rows[0]["text"]

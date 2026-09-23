@@ -19,4 +19,3 @@ data:
   minhash_num_perm: 64
   shingle_words: 3
   val_frac: 0.2
-  tokenizer: null

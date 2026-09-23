@@ -1,52 +1,89 @@
-#!/usr/bin/env python3
-"""
-GulfLite data pipeline (Step 1)
--------------------------------
-Raw Arabic / English / Arabizi text  ->  clean, deduplicated, language-tagged
-train/val JSONL  ->  (optional) tokenized uint16/uint32 .bin shards for training.
+"""Raw Arabic / English / Arabizi text -> clean, deduplicated, language-tagged train/val JSONL
+-> (optional) tokenized uint16/uint32 .bin files for training.
 
-Designed for a single machine (12 GB GPU, 64 GB RAM). Everything runs on CPU.
-
-Input formats: .txt (one sample per line), .jsonl (field set by --text-field), .csv
-Usage:
-    python data_pipeline.py --inputs "raw/**/*.txt" "raw/**/*.jsonl" --out data/
-    python data_pipeline.py --inputs "raw/*.jsonl" --out data/ --tokenizer path/to/tokenizer
-Optional: pip install datasketch   (near-duplicate removal with MinHash)
-          pip install transformers (tokenizing into .bin shards)
+Adapted from the standalone `data_pipeline.py` (GulfLite data pipeline, step 1). Runs on CPU.
+Inputs: .txt (one sample per line), .jsonl (text in `text_field`), .csv (column `text_field`).
+CLI:    uv run python scripts/prepare_data.py --config configs/data/<name>.yaml
 """
-import argparse, csv, glob, hashlib, json, random, re, sys, unicodedata
+
+import csv
+import glob
+import hashlib
+import json
+import random
+import re
+import unicodedata
 from collections import Counter
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
+from datasketch import MinHash, MinHashLSH
+
+
+@dataclass(frozen=True)
+class PipelineConfig:
+    """The `data:` section of a data config. No defaults: every value comes from YAML."""
+
+    inputs: list[str]  # glob patterns
+    out_dir: str
+    text_field: str  # JSONL key / CSV column holding the text
+    strip_diacritics: bool
+    unify_alef: bool  # إ أ آ ٱ -> ا and ى -> ي
+    min_chars: int
+    max_chars: int
+    min_letter_ratio: float  # letters / all characters
+    repetitive_min_words: int  # repetition is only checked for texts with this many words
+    min_unique_word_ratio: float
+    near_dup_threshold: float  # MinHash Jaccard threshold; 0 disables near-duplicate removal
+    minhash_num_perm: int
+    shingle_words: int  # word n-gram size of the MinHash shingles
+    val_frac: float
+    tokenizer: str | None  # HF tokenizer path/name -> also write train.bin / val.bin
+
+
 # ---------------------------------------------------------------- normalization
-AR_DIACRITICS = re.compile(r"[ؐ-ًؚ-ٰٟۖ-ۭ]")
+AR_DIACRITICS = re.compile("[ؐ-ًؚ-ٰٟۖ-ۭ]")
 TATWEEL = "ـ"
+ALEF_VARIANTS = re.compile("[إأآٱ]")  # إ أ آ ٱ
+ALEF, ALEF_MAKSURA, YEH = "ا", "ى", "ي"  # ا ى ي
 URL = re.compile(r"https?://\S+|www\.\S+")
 EMAIL = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
-# UAE numbers: +971 / 00971 / 05x..., plus generic long digit runs
-PHONE = re.compile(r"(?:\+|00)?971[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}|\b0?5\d[\s-]?\d{3}[\s-]?\d{4}\b")
+# UAE numbers: +971 / 00971 / 05x...
+PHONE = re.compile(
+    r"(?:\+|00)?971[\s-]?\d{1,2}[\s-]?\d{3}[\s-]?\d{4}|\b0?5\d[\s-]?\d{3}[\s-]?\d{4}\b"
+)
 EMIRATES_ID = re.compile(r"\b784[-\s]?\d{4}[-\s]?\d{7}[-\s]?\d\b")
 REPEAT = re.compile(r"(.)\1{4,}")  # "هههههههه" / "sooooo" -> capped at 3
 WS = re.compile(r"\s+")
-AR_CHAR = re.compile(r"[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
+AR_CHAR = re.compile("[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
 LAT_CHAR = re.compile(r"[A-Za-z]")
 ARABIZI_HINT = re.compile(r"\b\w*[a-zA-Z][2356789][a-zA-Z]\w*\b|\b[2356789][a-zA-Z]{2,}\b")
 
 
 def normalize(text: str, strip_diacritics: bool, unify_alef: bool) -> str:
+    """NFKC, drop tatweel (and optionally diacritics), unify alef forms, mask PII,
+    cap repeated characters at 3 and collapse whitespace."""
     text = unicodedata.normalize("NFKC", text)
     text = text.replace(TATWEEL, "")
     if strip_diacritics:
         text = AR_DIACRITICS.sub("", text)
     if unify_alef:
-        text = re.sub("[إأآٱ]", "ا", text).replace("ى", "ي")
-    # PII masking: keep it out of the model and out of your public repo
+        text = ALEF_VARIANTS.sub(ALEF, text).replace(ALEF_MAKSURA, YEH)
+    text = mask_pii(text)
+    text = REPEAT.sub(lambda m: m.group(1) * 3, text)
+    return WS.sub(" ", text).strip()
+
+
+def mask_pii(text: str) -> str:
+    """Replace URLs, emails, Emirates IDs and UAE phone numbers with placeholder tokens.
+
+    Keeps PII out of the model and out of the public repo.
+    """
     text = URL.sub("<URL>", text)
     text = EMAIL.sub("<EMAIL>", text)
     text = EMIRATES_ID.sub("<EID>", text)
-    text = PHONE.sub("<PHONE>", text)
-    text = REPEAT.sub(lambda m: m.group(1) * 3, text)
-    return WS.sub(" ", text).strip()
+    return PHONE.sub("<PHONE>", text)
 
 
 def detect_lang(text: str) -> str:
@@ -63,26 +100,31 @@ def detect_lang(text: str) -> str:
     return "mixed"
 
 
-def quality_ok(text: str, min_chars: int, max_chars: int) -> tuple[bool, str]:
+def quality_ok(text: str, cfg: PipelineConfig) -> tuple[bool, str]:
+    """Reject texts that are too short/long, mostly non-letters, or highly repetitive."""
     n = len(text)
-    if n < min_chars:
+    if n < cfg.min_chars:
         return False, "too_short"
-    if n > max_chars:
+    if n > cfg.max_chars:
         return False, "too_long"
     letters = len(AR_CHAR.findall(text)) + len(LAT_CHAR.findall(text))
-    if letters / n < 0.5:
+    if letters / n < cfg.min_letter_ratio:
         return False, "low_letter_ratio"
     words = text.split()
-    if len(words) >= 6 and len(set(words)) / len(words) < 0.3:
+    if (
+        len(words) >= cfg.repetitive_min_words
+        and len(set(words)) / len(words) < cfg.min_unique_word_ratio
+    ):
         return False, "repetitive"
     return True, "ok"
 
 
 # ---------------------------------------------------------------- reading
-def read_inputs(patterns, text_field):
+def read_inputs(patterns: list[str], text_field: str) -> Iterator[tuple[str, str]]:
+    """Yield (text, source) for every sample in the files matching `patterns` (sorted order)."""
     files = sorted({f for p in patterns for f in glob.glob(p, recursive=True)})
     if not files:
-        sys.exit(f"No input files matched: {patterns}")
+        raise FileNotFoundError(f"No input files matched: {patterns}")
     for f in files:
         src = Path(f).stem
         suffix = Path(f).suffix.lower()
@@ -105,15 +147,26 @@ def read_inputs(patterns, text_field):
                         yield line, src
 
 
-# ---------------------------------------------------------------- tokenizing
-def write_bin(samples, tokenizer_path, out_path):
+# ---------------------------------------------------------------- dedup + tokenizing
+def minhash(text: str, num_perm: int, shingle_words: int) -> MinHash:
+    """MinHash signature over the lower-cased word n-gram shingles of `text`."""
+    mh = MinHash(num_perm=num_perm)
+    toks = text.lower().split()
+    n_shingles = max(1, len(toks) - shingle_words + 1)
+    for g in {" ".join(toks[i : i + shingle_words]) for i in range(n_shingles)}:
+        mh.update(g.encode())
+    return mh
+
+
+def write_bin(samples: list[dict], tokenizer_path: str, out_path: Path) -> tuple[int, str]:
+    """Tokenize samples (EOS after each) into one flat token-id file; return (n_tokens, dtype)."""
     import numpy as np
     from transformers import AutoTokenizer
 
     tok = AutoTokenizer.from_pretrained(tokenizer_path)
     dtype = np.uint16 if len(tok) < 65535 else np.uint32
     eos = tok.eos_token_id if tok.eos_token_id is not None else 0
-    ids = []
+    ids: list[int] = []
     for s in samples:
         ids.extend(tok.encode(s["text"], add_special_tokens=False))
         ids.append(eos)
@@ -123,51 +176,32 @@ def write_bin(samples, tokenizer_path, out_path):
 
 
 # ---------------------------------------------------------------- main
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--inputs", nargs="+", required=True, help="glob patterns")
-    ap.add_argument("--out", default="data")
-    ap.add_argument("--text-field", default="text")
-    ap.add_argument("--min-chars", type=int, default=10)
-    ap.add_argument("--max-chars", type=int, default=4000)
-    ap.add_argument("--val-frac", type=float, default=0.02)
-    ap.add_argument("--keep-diacritics", action="store_true")
-    ap.add_argument("--no-unify-alef", action="store_true")
-    ap.add_argument("--near-dup", type=float, default=0.8, help="MinHash Jaccard threshold (needs datasketch); 0 disables")
-    ap.add_argument("--tokenizer", help="HF tokenizer path/name -> also writes train.bin / val.bin")
-    ap.add_argument("--seed", type=int, default=42)
-    args = ap.parse_args()
-
-    out = Path(args.out)
+def run_pipeline(cfg: PipelineConfig, seed: int) -> Counter:
+    """Run every step and write train/val.jsonl (+ .bin) and stats.json to `cfg.out_dir`."""
+    out = Path(cfg.out_dir)
     out.mkdir(parents=True, exist_ok=True)
-    stats = Counter()
-    seen, kept = set(), []
+    stats: Counter = Counter()
+    seen: set[str] = set()
+    kept: list[dict] = []
 
     lsh = None
-    if args.near_dup > 0:
-        try:
-            from datasketch import MinHash, MinHashLSH
-            lsh = MinHashLSH(threshold=args.near_dup, num_perm=64)
-        except ImportError:
-            print("[info] datasketch not installed -> exact dedup only")
+    if cfg.near_dup_threshold > 0:
+        lsh = MinHashLSH(threshold=cfg.near_dup_threshold, num_perm=cfg.minhash_num_perm)
 
-    for raw, src in read_inputs(args.inputs, args.text_field):
+    for raw, src in read_inputs(cfg.inputs, cfg.text_field):
         stats["read"] += 1
-        text = normalize(raw, not args.keep_diacritics, not args.no_unify_alef)
-        ok, reason = quality_ok(text, args.min_chars, args.max_chars)
+        text = normalize(raw, cfg.strip_diacritics, cfg.unify_alef)
+        ok, reason = quality_ok(text, cfg)
         if not ok:
             stats[f"drop_{reason}"] += 1
             continue
-        h = hashlib.md5(text.lower().encode()).hexdigest()
+        h = hashlib.md5(text.lower().encode(), usedforsecurity=False).hexdigest()
         if h in seen:
             stats["drop_exact_dup"] += 1
             continue
         seen.add(h)
         if lsh is not None:
-            mh = MinHash(num_perm=64)
-            toks = text.lower().split()
-            for g in {" ".join(toks[i:i + 3]) for i in range(max(1, len(toks) - 2))}:
-                mh.update(g.encode())
+            mh = minhash(text, cfg.minhash_num_perm, cfg.shingle_words)
             if lsh.query(mh):
                 stats["drop_near_dup"] += 1
                 continue
@@ -176,8 +210,8 @@ def main():
         stats[f"lang_{lang}"] += 1
         kept.append({"text": text, "lang": lang, "source": src})
 
-    random.Random(args.seed).shuffle(kept)
-    n_val = max(1, int(len(kept) * args.val_frac)) if kept else 0
+    random.Random(seed).shuffle(kept)
+    n_val = max(1, int(len(kept) * cfg.val_frac)) if kept else 0
     splits = {"val": kept[:n_val], "train": kept[n_val:]}
     for name, rows in splits.items():
         with open(out / f"{name}.jsonl", "w", encoding="utf-8") as fh:
@@ -186,15 +220,11 @@ def main():
         stats[f"{name}_samples"] = len(rows)
         stats[f"{name}_chars"] = sum(len(r["text"]) for r in rows)
 
-    if args.tokenizer:
+    if cfg.tokenizer:
         for name, rows in splits.items():
-            n_tok, dt = write_bin(rows, args.tokenizer, out / f"{name}.bin")
+            n_tok, dt = write_bin(rows, cfg.tokenizer, out / f"{name}.bin")
             stats[f"{name}_tokens"] = n_tok
             stats["token_dtype"] = dt
 
-    (out / "stats.json").write_text(json.dumps(stats, indent=2, ensure_ascii=False))
-    print(json.dumps(stats, indent=2, ensure_ascii=False))
-
-
-if __name__ == "__main__":
-    main()
+    (out / "stats.json").write_text(json.dumps(stats, indent=2, ensure_ascii=False), "utf-8")
+    return stats

@@ -1,0 +1,22 @@
+# Smoke test of the data pipeline on the tiny synthetic fixture in tests/fixtures/raw
+# (`make data-smoke`). Filter values match the original data_pipeline.py defaults, except
+# val_frac, which is larger so the tiny fixture still gets a few validation rows.
+base: ../base.yaml
+run_name: data-smoke
+
+data:
+  inputs: ["tests/fixtures/raw/*.jsonl", "tests/fixtures/raw/*.txt", "tests/fixtures/raw/*.csv"]
+  out_dir: ${paths.data_dir}/smoke
+  text_field: text
+  strip_diacritics: true
+  unify_alef: true
+  min_chars: 10
+  max_chars: 4000
+  min_letter_ratio: 0.5
+  repetitive_min_words: 6
+  min_unique_word_ratio: 0.3
+  near_dup_threshold: 0.8
+  minhash_num_perm: 64
+  shingle_words: 3
+  val_frac: 0.2
+  tokenizer: null

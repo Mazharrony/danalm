@@ -14,6 +14,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-006 | 0 | Plain YAML configs with a small loader: `base:` inheritance, `${...}` references, strict overrides |
 | D-007 | 0 | Reproducibility contract: every run records config + seed + git commit (+ diff) + environment |
 | D-008 | 0 | Seeding: always seed everything; deterministic CUDA kernels opt-in per config |
+| D-009 | 0 | Adopt `data_pipeline.py` as `danalm.data.pipeline`, driven by YAML config |
 
 ---
 
@@ -117,3 +118,16 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   comparing runs. Bitwise determinism slows training and is only needed when debugging a
   divergence.
 - **Alternatives:** Always deterministic (slower for no benefit in normal runs).
+
+## D-009 · Phase 0 · Adopt `data_pipeline.py` as `danalm.data.pipeline`
+
+- **Decision:** The existing pipeline lives in `src/danalm/data/pipeline.py`. It was imported
+  unchanged (commit `833ed32`) and then refactored. Its settings come from the `data:` section of
+  a YAML config (`PipelineConfig`, no defaults), including values that used to be hard-coded
+  (MinHash permutations, shingle size, quality thresholds). The CLI is
+  `scripts/prepare_data.py`, and every output folder gets `config.yaml` + `meta.json`.
+- **Why:** The brief says to reuse it, and the rules ban hard-coded settings. The refactor keeps
+  behavior identical: on the test fixture, the original script and the refactored one produce
+  byte-identical `train.jsonl`, `val.jsonl` and `stats.json`.
+- **Alternatives:** Keep it as a standalone argparse script (settings would live in shell
+  history instead of versioned configs).

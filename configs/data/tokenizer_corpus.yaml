@@ -1,0 +1,119 @@
+# Phase 1 tokenizer-training corpus: a seeded sample of the planned pretraining sources
+# (licences checked in docs/DATA_LEDGER.md). About 790M characters, mixed by characters
+# roughly like the pretraining plan: MSA 45%, Najdi dialect 14%, English 38%, domain ~3%.
+#   1. uv run python scripts/sample_corpus.py  --config configs/data/tokenizer_corpus.yaml
+#   2. uv run python scripts/prepare_data.py   --config configs/data/tokenizer_corpus.yaml
+base: ../base.yaml
+run_name: tokenizer-corpus
+
+sample:
+  out_dir: ${paths.data_dir}/raw/tokenizer_corpus
+  used_for: tokenizer training (Phase 1)
+  sources:
+    - name: fineweb2-arb
+      repo_id: HuggingFaceFW/fineweb-2
+      revision: af9c13333eb981300149d5ca60a8e9d659b276b9
+      files: data/arb_Arab/train/*.parquet
+      text_columns: [text]
+      target_chars: 290000000
+      licence: ODC-By-1.0 (+ Common Crawl ToU)
+      kind: real
+      description: Standard Arabic web text
+    - name: fineweb2-ars
+      repo_id: HuggingFaceFW/fineweb-2
+      revision: af9c13333eb981300149d5ca60a8e9d659b276b9
+      files: data/ars_Arab/train/*.parquet
+      text_columns: [text]
+      target_chars: 112000000
+      licence: ODC-By-1.0 (+ Common Crawl ToU)
+      kind: real
+      description: Najdi (Saudi) dialect web text, the closest open Gulf-like dialect
+    - name: wikipedia-ar
+      repo_id: wikimedia/wikipedia
+      revision: b04c8d1ceb2f5cd4588862100d08de323dccfbaa
+      files: 20231101.ar/*.parquet
+      text_columns: [text]
+      target_chars: 64000000
+      licence: CC-BY-SA-3.0 + GFDL
+      kind: real
+      description: Arabic Wikipedia
+    - name: fineweb-edu
+      repo_id: HuggingFaceFW/fineweb-edu
+      revision: 87f09149ef4734204d70ed1d046ddc9ca3f2b8f9
+      files: sample/10BT/*.parquet
+      text_columns: [text]
+      target_chars: 256000000
+      licence: ODC-By-1.0 (+ Common Crawl ToU)
+      kind: real
+      description: Educational English web text
+    - name: wikipedia-en
+      repo_id: wikimedia/wikipedia
+      revision: b04c8d1ceb2f5cd4588862100d08de323dccfbaa
+      files: 20231101.en/*.parquet
+      text_columns: [text]
+      target_chars: 48000000
+      licence: CC-BY-SA-3.0 + GFDL
+      kind: real
+      description: English Wikipedia
+    - name: bitext-support
+      repo_id: bitext/Bitext-customer-support-llm-chatbot-training-dataset
+      revision: f93dfd8473c480417bd50123f605f11d638f014c  # refs/convert/parquet
+      files: default/train/*.parquet
+      text_columns: [instruction, response]
+      target_chars: 0
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext)
+      description: English customer-support requests and answers
+    - name: bitext-banking
+      repo_id: bitext/Bitext-retail-banking-llm-chatbot-training-dataset
+      revision: 3e3621092fc6baaf7f53ceb6f091c60ae99acb67
+      files: "*.parquet"
+      text_columns: [instruction, response]
+      target_chars: 0
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext)
+      description: English retail-banking requests and answers
+    - name: bitext-telco
+      repo_id: bitext/Bitext-telco-llm-chatbot-training-dataset
+      revision: 4558834597845ec6368f563d1c8f957ba725183f  # refs/convert/parquet
+      files: default/train/*.parquet
+      text_columns: [instruction, response]
+      target_chars: 0
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext)
+      description: English telecom requests and answers
+    - name: clinc-train
+      repo_id: clinc/clinc_oos
+      revision: 155b9c710419136e17307b80d0a13e68cd46b4ec
+      files: plus/train-*.parquet
+      text_columns: [text]
+      target_chars: 0
+      licence: CC-BY-3.0
+      kind: real (crowdsourced)
+      description: English assistant queries incl. out-of-scope (train split only)
+    - name: massive-ar-train
+      repo_id: AmazonScience/massive
+      revision: ed58ac423a2f4121720918bf5301577edce4ffd3  # refs/convert/parquet
+      files: ar-SA/train/*.parquet
+      text_columns: [utt]
+      target_chars: 0
+      licence: CC-BY-4.0
+      kind: real (localized by native speakers)
+      description: Arabic (ar-SA) assistant utterances (train split only)
+
+data:  # cleaning (scripts/prepare_data.py); the val split is held out for fertility evaluation
+  inputs: ["${sample.out_dir}/*.jsonl"]
+  out_dir: ${paths.data_dir}/tokenizer_corpus
+  text_field: text
+  strip_diacritics: true
+  unify_alef: false            # D-014: keep standard spelling, the model writes replies
+  min_chars: 10
+  max_chars: 1000000           # keep long documents (the old 4000 was meant for chat messages)
+  min_letter_ratio: 0.5
+  repetitive_min_words: 6
+  min_unique_word_ratio: 0.1   # long documents repeat words naturally; sources are pre-filtered
+  near_dup_threshold: 0        # sources are deduplicated upstream; exact dedup still runs
+  minhash_num_perm: 64
+  shingle_words: 3
+  val_frac: 0.02
+  tokenizer: null

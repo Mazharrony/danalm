@@ -1,0 +1,81 @@
+# Small synthetic sets of UAE customer-service messages, used ONLY to measure tokenizer fertility
+# on varieties with no legal open corpus (Emirati Gulf Arabic, Arabizi, mixed). They double as
+# the first teacher-quality pilot for native-speaker review. Never used for training.
+#   uv run python scripts/generate_synthetic.py --config configs/synthetic/fertility_eval.yaml
+base: ../teacher/qwen35.yaml
+run_name: synth-fertility-eval
+
+generation:
+  out_dir: ${paths.data_dir}/synthetic/fertility_eval
+  used_for: tokenizer fertility evaluation only (Phase 1); teacher-quality pilot
+  per_request: 20       # messages asked for in one request
+  oversample: 1.25      # extra requests to make up for duplicates and rejected lines
+  normalize: {strip_diacritics: true, unify_alef: false}  # only for language tagging
+  params:               # Qwen3.5 non-thinking recommendations, slightly warmer for variety
+    temperature: 0.8
+    top_p: 0.8
+    top_k: 20
+    presence_penalty: 1.5
+    max_tokens: 1500
+    chat_template_kwargs: {enable_thinking: false}
+  system: >-
+    You write realistic messages that customers send to customer service in the UAE, for
+    testing a customer-service assistant. Output only the messages, one per line, with no
+    numbering, no quotes and no explanations.
+  domains:
+    - a bank (cards, transfers, balance, loans, fees)
+    - a telecom company (mobile plans, internet, SIM cards, roaming, bills)
+    - a food delivery app (late orders, missing items, refunds)
+    - a parcel delivery company (tracking, address changes, failed deliveries)
+  # A first plain prompt produced mostly Egyptian dialect ("عايز", "ليه", "مش") and near-meaningless
+  # Arabizi, so the prompts name Gulf words to use, words to avoid, and give style examples.
+  # Lines too close to an example (word-set Jaccard >= example_max_jaccard) are dropped.
+  example_max_jaccard: 0.5
+  tasks:
+    - name: gulf_emirati
+      target: 300
+      keep_langs: [ar]
+      examples:
+        - البطاقة مب راضية تشتغل من الصبح، شو السالفة؟
+        - ابغي اعرف ليش انخصم مني مبلغ زيادة
+        - الطلب تأخر وايد، متى بيوصل؟
+      prompt: >-
+        Write {n} different messages that customers send to {domain} customer service, in
+        Emirati Gulf Arabic (Arabic script), the way people type on WhatsApp: informal, short,
+        sometimes with spelling mistakes. Use Gulf words such as ابا / ابغي (I want), ليش (why),
+        شو (what), وين (where), شلون (how), وايد (a lot), مب (not), هاي (this), الحين (now),
+        باچر (tomorrow), زين (good), عقب (after). Never use Egyptian or Levantine words such as
+        عايز، عاوز، محتاج، ليه، ايه، حصل، كتير، مش، مفيش، دي، ده، بدي، هلق, and never negate
+        with a ش ending (ماقدرش، ما وصلش). Never write formal Standard Arabic. Style examples,
+        do not repeat them: {examples}. Vary the problem, the tone (polite, annoyed, urgent)
+        and the length (3 to 25 words).
+    - name: arabizi
+      target: 300
+      keep_langs: [arabizi, en]  # Arabizi without digits is tagged "en" by the heuristic
+      examples:
+        - salam, el card mob rady yeshte8el mn el sob7, shu el salfa?
+        - abi a3rf laish 5aso mni mablagh zyada
+        - el order t2a55ar wayed, mita bywsal?
+      prompt: >-
+        Write {n} different messages that customers send to {domain} customer service, in
+        Arabizi: Emirati Gulf Arabic typed with Latin letters, with numbers for Arabic sounds
+        (3 = ع, 7 = ح, 2 = ء, 5 = خ, 6 = ط, 9 = ص, 8 = غ). Use Gulf words such as abi / abgha
+        (I want), laish (why), shu (what), wain (where), shlon (how), wayed (a lot), mob (not),
+        al7een (now), zain (good). Never use Egyptian or Levantine words such as 3ayez, leh,
+        kteer, mesh, mafeesh, biddi. Every word must be a real Gulf Arabic word. Style
+        examples, do not repeat them: {examples}. Informal, like WhatsApp. Vary the problem,
+        the tone and the length (3 to 25 words).
+    - name: mixed
+      target: 300
+      keep_langs: [mixed]
+      examples:
+        - الطلب ما وصل and the app says delivered
+        - ابغي اسوي transfer بس الـ app يعطيني error
+        - البطاقة blocked من امس please ساعدوني
+      prompt: >-
+        Write {n} different messages that customers send to {domain} customer service. Every
+        message must mix Emirati Gulf Arabic in Arabic script with English words, as people in
+        the UAE often do: never only English, never only Arabic. Never use Egyptian or Levantine
+        words such as عايز، ليه، ايه، مش، مفيش، دي، ده. Style examples, do not repeat them:
+        {examples}. Informal, like WhatsApp. Vary the problem, the tone and the length
+        (3 to 25 words).

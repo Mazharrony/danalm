@@ -1,0 +1,27 @@
+# Real, human-written short messages used ONLY to evaluate tokenizer fertility (never trained on).
+#   uv run python scripts/sample_corpus.py --config configs/data/tokenizer_eval.yaml
+base: ../base.yaml
+run_name: tokenizer-eval-data
+
+sample:
+  out_dir: ${paths.data_dir}/raw/tokenizer_eval
+  used_for: tokenizer fertility evaluation only (Phase 1)
+  sources:
+    - name: massive-ar-test
+      repo_id: AmazonScience/massive
+      revision: ed58ac423a2f4121720918bf5301577edce4ffd3  # refs/convert/parquet
+      files: ar-SA/test/*.parquet
+      text_columns: [utt]
+      target_chars: 0
+      licence: CC-BY-4.0
+      kind: real (localized by native speakers)
+      description: Arabic (ar-SA) assistant utterances, test split
+    - name: clinc-test
+      repo_id: clinc/clinc_oos
+      revision: 155b9c710419136e17307b80d0a13e68cd46b4ec
+      files: plus/test-*.parquet
+      text_columns: [text]
+      target_chars: 0
+      licence: CC-BY-3.0
+      kind: real (crowdsourced)
+      description: English assistant queries incl. out-of-scope, test split

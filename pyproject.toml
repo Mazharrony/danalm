@@ -7,7 +7,9 @@ requires-python = ">=3.12,<3.13"
 # Exact versions live in uv.lock; bounds here only say what the code is written against.
 dependencies = [
     "datasketch>=2.0",
+    "huggingface-hub>=1.32.0",
     "numpy>=2.5",
+    "pyarrow>=25.0.1",
     "pyyaml>=6.0",
     "tokenizers>=0.23",
     "torch>=2.14,<2.15",

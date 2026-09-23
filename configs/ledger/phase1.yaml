@@ -1,0 +1,17 @@
+# Fill kept and token counts into the data ledger for everything collected in Phase 1.
+#   uv run python scripts/update_ledger.py --config configs/ledger/phase1.yaml
+base: ../base.yaml
+run_name: ledger-phase1
+
+ledger_update:
+  tokenizer_name: danalm-v1
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  normalize: {strip_diacritics: true, unify_alef: false}  # for files that were not cleaned yet
+  cleaned_corpora:   # pipeline outputs: kept docs grouped by their "source" field
+    - {id_prefix: tokenizer-corpus, dir: "${paths.data_dir}/tokenizer_corpus"}
+  file_sets:         # one file = one ledger entry, filtered exactly like the fertility eval
+    - {id: tokenizer-eval-data/massive-ar-test, path: "${paths.data_dir}/raw/tokenizer_eval/massive-ar-test.jsonl", keep_langs: [ar]}
+    - {id: tokenizer-eval-data/clinc-test, path: "${paths.data_dir}/raw/tokenizer_eval/clinc-test.jsonl", keep_langs: [en]}
+    - {id: synth-fertility-eval/gulf_emirati, path: "${paths.data_dir}/synthetic/fertility_eval/gulf_emirati.jsonl"}
+    - {id: synth-fertility-eval/arabizi, path: "${paths.data_dir}/synthetic/fertility_eval/arabizi.jsonl"}
+    - {id: synth-fertility-eval/mixed, path: "${paths.data_dir}/synthetic/fertility_eval/mixed.jsonl"}

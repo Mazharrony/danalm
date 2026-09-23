@@ -9,6 +9,11 @@ paths:
   data_dir: data      # gitignored. To keep data on another drive, make `data` a junction, e.g.
                       #   cmd /c mklink /J data E:\danalm-data
   runs_dir: runs      # one folder per run: config.yaml, meta.json, results, W&B files (gitignored)
+  artifacts_dir: artifacts  # trained tokenizers and model checkpoints (gitignored)
+
+ledger:               # every data collection is recorded here (docs/DATA_LEDGER.md, D-012)
+  jsonl: docs/data_ledger.jsonl
+  markdown: docs/DATA_LEDGER.md
 
 tracking:             # Weights & Biases
   project: danalm

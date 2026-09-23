@@ -1,0 +1,16 @@
+# The teacher: the owner's local Qwen3.5-9B (Apache-2.0, D-013), served by llama.cpp.
+# Generation configs inherit this with `base: ../teacher/qwen35.yaml`.
+base: ../base.yaml
+
+teacher:
+  server_exe: "D:/All Source Codes/queen 3.5/llama.cpp/llama-server.exe"
+  model_path: "D:/All Source Codes/queen 3.5/models/Qwen3.5-9B-Q4_K_M.gguf"
+  model_name: "Qwen3.5-9B Q4_K_M (unsloth/Qwen3.5-9B-GGUF)"
+  revision: 3885219b6810b007914f3a7950a8d1b469d598a5  # HF commit the GGUF was downloaded from
+  host: 127.0.0.1
+  port: 8081            # 8080 (server.ps1's default) is taken by Docker Desktop on this machine
+  ctx_size: 16384       # shared by the parallel slots (4096 tokens each)
+  parallel: 4           # concurrent requests (llama.cpp continuous batching)
+  extra_args: ["--n-gpu-layers", "99", "--flash-attn", "on", "--jinja", "--reasoning-format", "auto"]
+  startup_timeout_s: 240
+  request_timeout_s: 600

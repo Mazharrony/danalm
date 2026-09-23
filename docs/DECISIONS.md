@@ -17,6 +17,8 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-009 | 0 | Adopt `data_pipeline.py` as `danalm.data.pipeline`, driven by YAML config |
 | D-010 | 0 | PII masking: add cards, IBANs, landlines, long numbers; Arabic-Indic digits -> ASCII; never alter amounts |
 | D-011 | 0 | Language tags: fix clear bugs now; measure accuracy against human labels in Phase 2 |
+| D-012 | 0 | Data policy: only free, legally usable data, licence checked at the source, every collection logged in DATA_LEDGER.md |
+| D-013 | 0 | Teacher: the owner's local Qwen3.5-9B (Q4_K_M GGUF, llama.cpp server), Apache-2.0 |
 
 ---
 
@@ -164,3 +166,35 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 - **Known limit:** Arabizi without digits ("shlonak, abi agayer el card") is tagged `en`. The
   Phase 6 per-language breakdown will use human-verified labels on the test set, not this
   heuristic, and Phase 2 will measure the heuristic against those labels.
+
+## D-012 · Phase 0 · Data policy and ledger
+
+- **Decision:** The project owner is a solo developer with no private corpus, so we use only
+  free, legally usable data. Every source's licence is checked on the primary source (dataset or
+  model card, licence file) before download. Permissive licences are preferred; share-alike
+  licences are flagged; non-commercial, unclear or missing licences are rejected, and so is
+  redistributed social-media text. [DATA_LEDGER.md](DATA_LEDGER.md) records every collection:
+  source, revision, licence, date, filters and counts (documents, bytes, words and, from Phase 1
+  on, tokens).
+- **Why:** The owner's standing rule. It also makes the model card's data section and licence
+  honest and checkable.
+- **Consequence:** Open Gulf Arabic text is scarce. The closest clean source is FineWeb-2 Najdi
+  (`ars_Arab`); Emirati Gulf Arabic and Arabizi will mostly come from the teacher (D-013),
+  labelled as synthetic.
+
+## D-013 · Phase 0 · Teacher model: local Qwen3.5-9B
+
+- **Decision:** The Phase 2b teacher is the owner's local Qwen3.5-9B: `unsloth/Qwen3.5-9B-GGUF`
+  Q4_K_M (HF commit `3885219b`), served by llama.cpp `llama-server` at `127.0.0.1:8080` with an
+  OpenAI-compatible API (setup in `D:\All Source Codes\queen 3.5`).
+- **Why:** Apache-2.0 (verified on the official card and LICENSE), so there are no limits on
+  training with its outputs. It supports 201 languages and dialects, fits the GPU at about
+  8.6 GB, and the owner measured about 75 tok/s single-stream.
+- **Plan:** Use non-thinking mode (`enable_thinking: false`) for bulk generation, since thinking
+  multiplies the tokens per sample. Compare it with thinking mode on a small pilot first. The
+  server must be stopped before any student GPU job (brief rule: never teacher and student on
+  the GPU together); training scripts will refuse to start while it is up.
+- **Alternatives:** Jais (Arabic-centric, Apache-2.0) as a second teacher if a Gulf-Arabic
+  quality check of Qwen's output is poor.
+- **Revisit if:** a native-speaker review of the pilot finds Qwen's Gulf Arabic or Arabizi
+  unnatural.

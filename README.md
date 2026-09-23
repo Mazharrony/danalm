@@ -7,7 +7,8 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
 
 **Status:** Phase 0 (setup and guardrails) is done.
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
-choice are in [docs/DECISIONS.md](docs/DECISIONS.md).
+choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
+token count, is in [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).
 
 ## Setup (Windows 11, native)
 

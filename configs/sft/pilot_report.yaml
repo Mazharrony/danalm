@@ -1,0 +1,17 @@
+# Teacher pilot report: compares the two pilot runs and picks the teacher for the full SFT run.
+# The decision rule below was written BEFORE the pilot results were seen.
+#   uv run python scripts/teacher_pilot_report.py --config configs/sft/pilot_report.yaml
+base: generate.yaml
+run_name: sft-pilot-report
+
+report:
+  baseline: {name: Qwen3.5-9B (Q4_K_M), dir: "${paths.data_dir}/sft/sft-pilot-9b"}
+  candidate: {name: Qwen3.5-35B-A3B (UD-Q4_K_XL, experts in RAM), dir: "${paths.data_dir}/sft/sft-pilot-35b"}
+  judge: Qwen3.5-35B-A3B (blind re-labelling of both runs)
+  full_run_target: 20000       # usable examples wanted from the full SFT run
+  decision:
+    min_quality_gain: 0.10     # candidate wins if usable/parsed is >= 10% higher (relative) ...
+    or_non_gulf_drop: 0.30     # ... or its non-Gulf dialect rate is >= 30% lower (relative) ...
+    max_full_run_hours: 10     # ... and the full run (generation + judging) fits in 10 hours
+  samples_per_variety: 3
+  results_md: docs/results/phase2_teacher_pilot.md

@@ -1,0 +1,17 @@
+# Shared settings. Every other config starts with `base: <relative path to this file>` and
+# overrides what it needs. Relative paths are relative to where you run commands: the repo root.
+
+seed: 42
+deterministic: false  # true = deterministic CUDA kernels: bitwise-repeatable but slower
+run_name: null        # each job config sets this
+
+paths:
+  data_dir: data      # gitignored. To keep data on another drive, make `data` a junction, e.g.
+                      #   cmd /c mklink /J data E:\danalm-data
+  runs_dir: runs      # one folder per run: config.yaml, meta.json, results, W&B files (gitignored)
+
+tracking:             # Weights & Biases
+  project: danalm
+  entity: null        # W&B user or team; null = your default entity
+  mode: online        # online | offline (upload later with `wandb sync`) | disabled
+  tags: []

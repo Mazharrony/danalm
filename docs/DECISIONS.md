@@ -11,6 +11,9 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-003 | 0 | `pyproject.toml` + `uv.lock` instead of `requirements.txt`; PyTorch 2.14.0 (CUDA 13.0 on Windows, CPU on Linux) |
 | D-004 | 0 | Weights & Biases for experiment tracking |
 | D-005 | 0 | ruff + black via pre-commit, with guards against committing data and models |
+| D-006 | 0 | Plain YAML configs with a small loader: `base:` inheritance, `${...}` references, strict overrides |
+| D-007 | 0 | Reproducibility contract: every run records config + seed + git commit (+ diff) + environment |
+| D-008 | 0 | Seeding: always seed everything; deterministic CUDA kernels opt-in per config |
 
 ---
 
@@ -77,3 +80,40 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   hooks enforce both on every commit instead of relying on memory.
 - **Alternatives:** `ruff format` instead of black (near-identical output, one tool fewer; the
   brief names black). Hooks pinned to their own repos (can drift from the venv's versions).
+
+## D-006 · Phase 0 · Plain YAML configs with a small loader
+
+- **Decision:** Every setting lives in `configs/*.yaml`. `danalm.config` (about 100 lines) supports
+  `base:` inheritance, `${dotted.key}` references and `key=value` CLI overrides. Overrides must
+  name an existing key, so typos fail instead of being silently ignored. Component code gets its
+  values from the config and has no defaults for hyperparameters.
+- **Why:** The brief bans hard-coded hyperparameters and paths (BanglaLM's main problem). A small
+  loader is easy to read, test and debug. Relative paths are relative to the repo root, where
+  every command runs from.
+- **Alternatives:** Hydra (powerful, but changes the working directory and adds a lot of magic);
+  OmegaConf (close to what we need, but slow release cadence and another dependency); argparse
+  defaults (these are exactly the hard-coded settings we want to avoid).
+- **Revisit if:** configs grow to need typed schema validation beyond dataclass construction.
+
+## D-007 · Phase 0 · Reproducibility contract
+
+- **Decision:** `danalm.utils.run.start_run` gives every run the folder `runs/<run_name>-<timestamp>/`
+  with `config.yaml` (fully resolved), `meta.json` (git commit, dirty flag, untracked files,
+  command, seed, Python/PyTorch/CUDA/GPU versions) and, when the tree has uncommitted changes,
+  `git_diff.patch`. The same config and metadata go to W&B. Data outputs get the same
+  `config.yaml` + `meta.json` next to them.
+- **Why:** "Every run must be reproducible from config + seed + git commit." Saving the diff
+  keeps even a dirty-tree run reproducible, and the warning nudges us to commit before long
+  runs.
+- **Alternatives:** Refusing to run on a dirty tree (too strict while iterating); relying only on
+  W&B's own git capture (it lives outside the repo and is lost if W&B is off).
+
+## D-008 · Phase 0 · Seeding
+
+- **Decision:** `set_seed(seed, deterministic)` seeds Python, NumPy and PyTorch (CPU and every
+  GPU). `deterministic: false` by default in `configs/base.yaml`. When true, it also turns on
+  deterministic PyTorch/cuDNN kernels and sets `CUBLAS_WORKSPACE_CONFIG`.
+- **Why:** Seeding alone fixes initialization, sampling and data order, which is what matters for
+  comparing runs. Bitwise determinism slows training and is only needed when debugging a
+  divergence.
+- **Alternatives:** Always deterministic (slower for no benefit in normal runs).

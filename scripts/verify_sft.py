@@ -3,9 +3,11 @@
 Usage: uv run python scripts/verify_sft.py --config configs/sft/<name>.yaml
 For every file in verify.inputs, writes <same dir>/verified.jsonl: each row gains "judge_label"
 and "agree". Rows with agree=false are dropped when the final SFT set is built. The judge sees only
-the message, never the intended label.
+the message, never the intended label. Judge answers are saved to <same dir>/judge_answers.jsonl
+as they arrive; running the same config again after a crash resumes from there.
 """
 
+import hashlib
 import json
 import time
 from collections import Counter
@@ -15,7 +17,8 @@ from typing import Any
 
 from danalm.config import config_from_cli
 from danalm.data.intents import load_intents
-from danalm.teacher.client import chat, parse_labels
+from danalm.teacher.checkpoint import AnswerLog
+from danalm.teacher.client import TEACHER_ERRORS, chat_with_retries, parse_labels
 from danalm.teacher.server import TeacherServer
 from danalm.utils.run import start_run
 
@@ -42,8 +45,17 @@ def main() -> None:
             with open(path, encoding="utf-8") as fh:
                 rows = [json.loads(line) for line in fh]
             batches = [rows[i : i + v["batch"]] for i in range(0, len(rows), v["batch"])]
+            keys = [
+                hashlib.md5("\n".join(r["message"] for r in b).encode("utf-8")).hexdigest()
+                for b in batches
+            ]
+            log = AnswerLog(path.with_name("judge_answers.jsonl"), keys)
+            if log.done:
+                print(
+                    f"resuming: {len(log.done)}/{len(batches)} batches already judged", flush=True
+                )
 
-            def judge(batch: list[dict]) -> dict[int, str]:
+            def judge(batch: list[dict]) -> str | None:
                 messages = [
                     {"role": "system", "content": v["system"]},
                     {
@@ -51,12 +63,42 @@ def main() -> None:
                         "content": build_prompt(intents, [r["message"] for r in batch]),
                     },
                 ]
-                answer, _ = chat(server.base_url, messages, v["params"], t["request_timeout_s"])
-                return parse_labels(answer)
+                try:
+                    answer, _ = chat_with_retries(
+                        server.base_url, messages, v["params"], t["request_timeout_s"],
+                        t["max_retries"], t["retry_backoff_s"],
+                    )  # fmt: skip
+                except TEACHER_ERRORS as err:
+                    print(f"[teacher] a batch failed: {err!r}", flush=True)
+                    return None
+                return answer
 
             start = time.time()
+            failed = 0
+            todo = [i for i in range(len(batches)) if i not in log.done]
             with ThreadPoolExecutor(t["parallel"]) as pool:
-                answers = list(pool.map(judge, batches))
+                try:
+                    judged = pool.map(judge, [batches[i] for i in todo])
+                    for n, (i, answer) in enumerate(zip(todo, judged, strict=True), start=1):
+                        if answer is None:  # not saved, so a re-run asks again
+                            failed += 1
+                            if failed > t["max_failed_requests"]:
+                                raise RuntimeError(
+                                    f"{failed} failed batches; progress is saved in {log.path}, "
+                                    "re-run to resume"
+                                )
+                            continue
+                        log.add(i, keys[i], answer=answer)
+                        if n % 50 == 0 or n == len(todo):
+                            print(f"{len(log.done)}/{len(batches)} batches judged", flush=True)
+                except BaseException:
+                    pool.shutdown(wait=False, cancel_futures=True)  # don't send the queued ones
+                    raise
+                finally:
+                    log.close()
+            # batches that still failed get no label, so their rows count as disagreements
+            answers = [parse_labels(log.done[i]["answer"]) if i in log.done else {}
+                       for i in range(len(batches))]  # fmt: skip
             counts: Counter = Counter()
             for batch, labels in zip(batches, answers, strict=True):
                 for n, row in enumerate(batch, start=1):
@@ -72,6 +114,7 @@ def main() -> None:
             with open(out, "w", encoding="utf-8", newline="\n") as fh:
                 fh.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
             counts["seconds"] = round(time.time() - start, 1)
+            counts["failed_batches"] = failed
             summary["files"][str(path)] = dict(counts)
             rate = counts["agree"] / max(1, counts["rows"])
             print(f"{path}: {counts['agree']}/{counts['rows']} agree ({rate:.1%}) -> {out}")

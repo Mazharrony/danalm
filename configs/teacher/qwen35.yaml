@@ -14,3 +14,8 @@ teacher:
   extra_args: ["--n-gpu-layers", "99", "--flash-attn", "on", "--jinja", "--reasoning-format", "auto"]
   startup_timeout_s: 240
   request_timeout_s: 600
+  # A failed request is retried after 30, 60 and 90 s. A run stops after max_failed_requests
+  # requests failed every retry (e.g. the server died); its saved answers let a re-run resume.
+  max_retries: 3
+  retry_backoff_s: 30
+  max_failed_requests: 20

@@ -5,6 +5,9 @@ Usage: uv run python scripts/generate_sft.py --config configs/sft/<name>.yaml
 Writes <sft.out_dir>/generated.jsonl (kept), rejected.jsonl (with reasons), stats.json,
 manifest.json and provenance files. The intent label is known by construction; verify_sft.py
 then re-labels the kept rows blindly with a judge model.
+Every teacher answer is saved to <sft.out_dir>/answers.jsonl as it arrives; running the same
+config again after a crash resumes from there (saved answers are re-filtered in plan order, so
+the result matches an uninterrupted run).
 """
 
 import json
@@ -25,7 +28,8 @@ from danalm.data.hub import text_stats
 from danalm.data.intents import load_intents
 from danalm.data.pipeline import detect_lang, minhash, normalize
 from danalm.data.reply_checks import claims_done_action
-from danalm.teacher.client import chat, parse_json_objects
+from danalm.teacher.checkpoint import AnswerLog
+from danalm.teacher.client import TEACHER_ERRORS, chat_with_retries, parse_json_objects
 from danalm.teacher.server import TeacherServer
 from danalm.utils.run import start_run, write_provenance
 from danalm.utils.seed import set_seed
@@ -124,60 +128,98 @@ def main() -> None:
     out = Path(sft["out_dir"])
     write_provenance(out, cfg)
     specs = plan_requests(load_intents(sft["intents_file"]), sft, cfg["seed"])
+    keys = [f"{s['intent']}|{s['variety']}|{s['seed']}" for s in specs]
+    log = AnswerLog(out / "answers.jsonl", keys)
+    resumed = len(log.done)
+    if resumed:
+        print(f"resuming: {resumed}/{len(specs)} answers already saved in {log.path}", flush=True)
     keep = Filter(sft)
-    stats: Counter = Counter()
+    stats: Counter = Counter(resumed_requests=resumed)
     kept, rejected = [], []
-    tokens = 0
+    tokens = fresh_tokens = 0
 
     start = time.time()
     with TeacherServer(t, run.dir / "llama-server.log") as server:
 
-        def request(spec: dict[str, Any]) -> tuple[dict, str, dict]:
+        def request(i: int) -> tuple[str | None, dict]:
             messages = [
                 {"role": "system", "content": sft["system"]},
-                {"role": "user", "content": build_prompt(spec, sft)},
+                {"role": "user", "content": build_prompt(specs[i], sft)},
             ]
-            params = {**sft["params"], "seed": spec["seed"]}
-            answer, usage = chat(server.base_url, messages, params, t["request_timeout_s"])
-            return spec, answer, usage
+            params = {**sft["params"], "seed": specs[i]["seed"]}
+            try:
+                return chat_with_retries(
+                    server.base_url, messages, params, t["request_timeout_s"],
+                    t["max_retries"], t["retry_backoff_s"],
+                )  # fmt: skip
+            except TEACHER_ERRORS as err:
+                print(f"[teacher] request {i} failed: {err!r}", flush=True)
+                return None, {}
 
+        todo = [i for i in range(len(specs)) if i not in log.done]
         with ThreadPoolExecutor(t["parallel"]) as pool:
-            for i, (spec, answer, usage) in enumerate(pool.map(request, specs), start=1):
-                tokens += usage.get("completion_tokens", 0)
-                examples = parse_json_objects(answer)
-                stats["requests"] += 1
-                stats["examples_parsed"] += len(examples)
-                stats["short_answers"] += len(examples) < sft["examples_per_request"]
-                for example in examples:
-                    row, reason = keep(example, spec)
-                    stats[reason] += 1
-                    stats[f"{spec['variety']}/{reason}"] += 1
-                    if row:
-                        kept.append(row)
+            fresh = zip(todo, pool.map(request, todo), strict=True)
+            try:
+                for i, spec in enumerate(specs):
+                    if i in log.done:
+                        answer, usage = log.done[i]["answer"], log.done[i]["usage"]
                     else:
-                        rejected.append(
-                            {
-                                **example,
-                                **{k: spec[k] for k in ("intent", "variety")},
-                                "reason": reason,
-                            }
+                        _, (answer, usage) = next(fresh)
+                        if answer is None:  # not saved, so a re-run asks again
+                            stats["failed_requests"] += 1
+                            if stats["failed_requests"] > t["max_failed_requests"]:
+                                raise RuntimeError(
+                                    f"{stats['failed_requests']} failed requests; progress is "
+                                    f"saved in {log.path}, re-run to resume"
+                                )
+                            continue
+                        log.add(i, keys[i], answer=answer, usage=usage)
+                        fresh_tokens += usage.get("completion_tokens", 0)
+                    tokens += usage.get("completion_tokens", 0)
+                    examples = parse_json_objects(answer)
+                    stats["requests"] += 1
+                    stats["examples_parsed"] += len(examples)
+                    stats["short_answers"] += len(examples) < sft["examples_per_request"]
+                    for example in examples:
+                        row, reason = keep(example, spec)
+                        stats[reason] += 1
+                        stats[f"{spec['variety']}/{reason}"] += 1
+                        if row:
+                            kept.append(row)
+                        else:
+                            rejected.append(
+                                {
+                                    **example,
+                                    **{k: spec[k] for k in ("intent", "variety")},
+                                    "reason": reason,
+                                }
+                            )
+                    if (i + 1) % 20 == 0 or i + 1 == len(specs):
+                        rate = fresh_tokens / (time.time() - start)
+                        print(
+                            f"{i + 1}/{len(specs)} requests, {len(kept)} kept, {rate:.0f} tok/s",
+                            flush=True,
                         )
-                if i % 20 == 0 or i == len(specs):
-                    rate = tokens / (time.time() - start)
-                    print(
-                        f"{i}/{len(specs)} requests, {len(kept)} kept, {rate:.0f} tok/s", flush=True
-                    )
-                    run.wandb.log({"requests": i, "kept": len(kept), "tokens_per_s": rate})
+                        run.wandb.log({"requests": i + 1, "kept": len(kept), "tokens_per_s": rate})
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)  # don't send the queued requests
+                raise
+            finally:
+                log.close()
 
     seconds = time.time() - start
-    stats |= {"completion_tokens": tokens, "seconds": round(seconds, 1),
-              "tokens_per_s": round(tokens / seconds, 1), "kept_per_min": round(len(kept) / seconds * 60, 1)}  # fmt: skip
+    # speeds cover this process only; kept_per_min is left out when earlier answers were reused
+    summary = {"completion_tokens": tokens, "seconds": round(seconds, 1),
+               "tokens_per_s": round(fresh_tokens / seconds, 1),
+               "kept_per_min": None if resumed else round(len(kept) / seconds * 60, 1)}  # fmt: skip
+    stats = dict(stats) | summary  # a plain dict: Counter's |= keeps the larger value per key
     for name, rows in (("generated", kept), ("rejected", rejected)):
         with open(out / f"{name}.jsonl", "w", encoding="utf-8", newline="\n") as fh:
             fh.writelines(json.dumps(r, ensure_ascii=False) + "\n" for r in rows)
     (out / "stats.json").write_text(json.dumps(stats, indent=2), encoding="utf-8")
     manifest = {"teacher": t["model_name"], "revision": t["revision"], "params": sft["params"],
-                "prompt": sft["prompt"], "requests": len(specs)}  # fmt: skip
+                "prompt": sft["prompt"], "requests": len(specs), "resumed_requests": resumed,
+                "failed_requests": stats.get("failed_requests", 0)}  # fmt: skip
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2, ensure_ascii=False), "utf-8")
 
     text = text_stats([f"{r['message']}\n{r['reply']}" for r in kept])

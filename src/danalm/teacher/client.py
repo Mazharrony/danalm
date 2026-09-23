@@ -1,7 +1,9 @@
 """Minimal client for the teacher's OpenAI-compatible chat API (stdlib only)."""
 
+import http.client
 import json
 import re
+import time
 import urllib.request
 from typing import Any
 
@@ -24,6 +26,31 @@ def chat(
     with urllib.request.urlopen(request, timeout=timeout) as resp:
         data = json.load(resp)
     return data["choices"][0]["message"]["content"] or "", data.get("usage", {})
+
+
+# Failures worth retrying: connection problems and timeouts (OSError, which covers urllib's
+# URLError and HTTPError), a dropped response (HTTPException) and a malformed body.
+TEACHER_ERRORS = (OSError, http.client.HTTPException, ValueError, KeyError)
+
+
+def chat_with_retries(
+    base_url: str,
+    messages: list[dict[str, str]],
+    params: dict[str, Any],
+    timeout: float,
+    retries: int,
+    backoff_s: float,
+) -> tuple[str, dict[str, int]]:
+    """`chat`, retried up to `retries` times on TEACHER_ERRORS, waiting backoff_s x attempt."""
+    for attempt in range(1, retries + 2):
+        try:
+            return chat(base_url, messages, params, timeout)
+        except TEACHER_ERRORS as err:
+            if attempt > retries:
+                raise
+            print(f"[teacher] {err!r}; retry {attempt}/{retries} in {backoff_s * attempt:.0f} s")
+            time.sleep(backoff_s * attempt)
+    raise AssertionError("unreachable")
 
 
 def parse_lines(answer: str) -> list[str]:

@@ -7,7 +7,9 @@ import pytest
 
 from danalm.data import ledger
 from danalm.data.hub import sample_parquet, text_stats
-from danalm.teacher.client import parse_lines
+from danalm.teacher import client
+from danalm.teacher.checkpoint import AnswerLog
+from danalm.teacher.client import chat_with_retries, parse_lines
 from danalm.teacher.server import assert_teacher_stopped
 
 
@@ -96,3 +98,44 @@ def test_parse_lines_strips_list_markers_but_keeps_arabizi_and_ranges():
 
 def test_assert_teacher_stopped_passes_when_nothing_listens():
     assert_teacher_stopped("127.0.0.1", 1)  # port 1: nothing listens there
+
+
+def test_answer_log_resumes_and_drops_a_torn_tail(tmp_path):
+    path, keys = tmp_path / "answers.jsonl", ["a", "b", "c", "d"]
+    log = AnswerLog(path, keys)
+    log.add(0, "a", answer="x")
+    log.add(1, "b", answer="ي")
+    log.close()
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write('{"i": 2, "key": "c", "ans' + "\0" * 8)  # a crash in the middle of a write
+    log = AnswerLog(path, keys)
+    assert sorted(log.done) == [0, 1] and log.done[1]["answer"] == "ي"
+    log.add(3, "d", answer="z")
+    log.close()
+    assert sorted(AnswerLog(path, keys).done) == [0, 1, 3]
+
+
+def test_answer_log_refuses_a_different_plan(tmp_path):
+    path = tmp_path / "answers.jsonl"
+    log = AnswerLog(path, ["a", "b"])
+    log.add(1, "b", answer="x")
+    log.close()
+    with pytest.raises(ValueError, match="does not match"):
+        AnswerLog(path, ["a", "other"])
+
+
+def test_chat_with_retries_retries_then_gives_up(monkeypatch):
+    calls = []
+
+    def flaky(*args):
+        calls.append(1)
+        if len(calls) < 3:
+            raise ConnectionRefusedError("server busy")
+        return "answer", {}
+
+    monkeypatch.setattr(client, "chat", flaky)
+    assert chat_with_retries("url", [], {}, 1, retries=2, backoff_s=0) == ("answer", {})
+    calls.clear()
+    with pytest.raises(ConnectionRefusedError):
+        chat_with_retries("url", [], {}, 1, retries=1, backoff_s=0)
+    assert len(calls) == 2

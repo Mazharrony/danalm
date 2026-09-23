@@ -1,0 +1,19 @@
+# Phase 2 results page (pretraining corpus + synthetic SFT set), generated from the run outputs.
+#   uv run python scripts/phase2_report.py --config configs/data/phase2_report.yaml
+# Inherits the full SFT run's config for examples_per_request; the paths below are explicit.
+base: ../sft/full.yaml
+run_name: phase2-report
+
+report:
+  ledger_prefix: pretrain-corpus/
+  clean_stats: ${paths.data_dir}/pretrain_corpus/stats.json
+  token_index: ${paths.data_dir}/pretrain_tokens/index.json
+  shard_verify: ${paths.data_dir}/pretrain_tokens/verify.json
+  sft_dir: ${paths.data_dir}/sft/sft-full       # stats.json, manifest.json, verified.jsonl
+  sft_final_dir: ${paths.data_dir}/sft/final    # train/val.jsonl and stats.json (build_sft_dataset.py)
+  examples_per_request: ${sft.examples_per_request}
+  tokenizer_name: danalm-v1
+  top_confusions: 10
+  samples_per_variety: 4
+  sample_seed: 7
+  results_md: docs/results/phase2_data.md

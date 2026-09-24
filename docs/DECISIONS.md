@@ -800,6 +800,11 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     - New examples go to the **training split only**. Any new message that is a near copy of a
       validation message is dropped. The validation split stays the original 968 examples,
       cleaned, so every comparison tonight uses the same development set.
+    - Added before assembly: any training message, old or new, that equals or nearly copies a
+      human test message is dropped. It uses the matching of `scripts/check_overlap.py`
+      (canonical form, character 3-gram MinHash at 0.6). The test set is used for nothing
+      else. The overlap check is re-run after assembly, and any hit is reported for a person
+      to resolve, as `docs/TEST_SET.md` requires.
   - **C. SFT round 1** on the pretrained model (D-028), with the D-029 sweep and selection rule,
     on the data from A and B.
   - **D. Second pretraining pass.**

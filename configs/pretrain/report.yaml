@@ -5,6 +5,8 @@ base: full.yaml
 run_name: pretrain-report
 
 report:
+  title: "Phase 4 results: pretraining"
+  setup: D-028
   run_dir: ${paths.artifacts_dir}/checkpoints/pretrain-full
   val_jsonl: ${paths.data_dir}/pretrain_corpus/val.jsonl   # cleaned held-out documents with sources
   tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json

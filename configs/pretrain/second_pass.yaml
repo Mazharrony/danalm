@@ -1,0 +1,14 @@
+# D-031 D: a second pass over the same train shards, from the first pass's final weights with a
+# fresh optimizer, in a new order. Kept only if its validation loss on the same fixed validation
+# windows (seed 42) is below the first pass's 3.330.
+#   uv run python scripts/pretrain.py --config configs/pretrain/second_pass.yaml
+# Re-running the same command resumes from the latest checkpoint in train.out_dir.
+base: full.yaml
+run_name: pretrain-second
+
+train:
+  init: ${paths.artifacts_dir}/checkpoints/pretrain-full/model.pt
+  order_seed: 43
+  lr: 1.0e-3
+  min_lr: 1.0e-4
+  warmup_steps: 200

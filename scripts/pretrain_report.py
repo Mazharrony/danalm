@@ -96,7 +96,11 @@ def main() -> None:
     for split in ("train", "val"):
         shards = [read_shard(tokens_dir / f["file"]) for f in index["splits"][split]["files"]]
         windows = window_index([len(s) for s in shards], t["seq_len"])
-        rows = np.random.default_rng(cfg["seed"]).permutation(len(windows))[:n_windows]
+        # the run's own draws: its training order (order_seed, if set) and its validation windows
+        seed = (
+            t["order_seed"] if split == "train" and t.get("order_seed") is not None else cfg["seed"]
+        )
+        rows = np.random.default_rng(seed).permutation(len(windows))[:n_windows]
         losses = []
         with torch.no_grad():
             for b in range(0, n_windows, mb):
@@ -116,10 +120,10 @@ def main() -> None:
 
     last_val = val[-1]
     lines = [
-        "# Phase 4 results: pretraining",
+        f"# {r['title']}",
         "",
         f"Generated on {date.today().isoformat()} by `scripts/pretrain_report.py`; do not edit by"
-        " hand. Setup: D-028 in [DECISIONS.md](../DECISIONS.md).",
+        f" hand. Setup: {r['setup']} in [DECISIONS.md](../DECISIONS.md).",
         "",
         f"{state['steps']:,} steps, {state['tokens'] / 1e9:.3f}B tokens. Final validation loss"
         f" **{last_val['val_loss']:.3f}** (perplexity {math.exp(last_val['val_loss']):.1f}), from"

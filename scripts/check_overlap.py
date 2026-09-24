@@ -13,33 +13,15 @@ Writes overlap_report.json next to the first test file and exits with code 1 on 
 
 import glob
 import json
-import re
 import sys
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-from datasketch import MinHash, MinHashLSH
+from datasketch import MinHashLSH
 
 from danalm.config import config_from_cli
-from danalm.data.pipeline import normalize
-
-_FOLD = str.maketrans({"ة": "ه", "ى": "ي", "أ": "ا", "إ": "ا", "آ": "ا", "ٱ": "ا"})
-_PUNCT = re.compile(r"[^\w\s<>]")
-
-
-def canonical(text: str, norm_cfg: dict[str, bool]) -> str:
-    """Spelling- and punctuation-insensitive form used only for overlap matching."""
-    folded = normalize(text, **norm_cfg).lower().translate(_FOLD)
-    return " ".join(_PUNCT.sub(" ", folded).split())
-
-
-def char_minhash(text: str, n: int, num_perm: int) -> MinHash:
-    mh = MinHash(num_perm=num_perm)
-    padded = f" {text.lower()} "
-    for gram in {padded[i : i + n] for i in range(max(1, len(padded) - n + 1))}:
-        mh.update(gram.encode("utf-8"))
-    return mh
+from danalm.data.overlap import canonical, char_minhash
 
 
 def iter_texts(patterns: list[str], field: str) -> Iterator[tuple[str, str]]:

@@ -17,3 +17,9 @@ assemble:
   near_dup_threshold: 0.8      # MinHash Jaccard, as for the generated messages
   minhash_num_perm: 64
   shingle_words: 2
+  decontaminate:               # training messages that copy a human test message are dropped
+    test_set: ${paths.data_dir}/test/test_set.jsonl
+    normalize: {strip_diacritics: true, unify_alef: false}   # the settings of configs/data/overlap.yaml
+    char_ngram: 3
+    num_perm: 128
+    near_dup_threshold: 0.6

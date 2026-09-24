@@ -1,0 +1,22 @@
+# Phase 6 baseline (D-027), prepared overnight (D-031 G): CAMeLBERT-mix (Apache-2.0) fine-tuned
+# as a 21-intent classifier on the same SFT training messages as DanaLM; the best epoch is chosen
+# on the SFT validation split. The human test set is not used here.
+#   uv run python scripts/baseline_camelbert.py --config configs/eval/baseline_camelbert.yaml
+base: [../base.yaml, ../teacher/qwen35.yaml]   # the teacher host/port: GPU jobs refuse to run while it is up
+run_name: baseline-camelbert
+
+baseline:
+  repo_id: CAMeL-Lab/bert-base-arabic-camelbert-mix
+  revision: 9be352797bdf28a9ae21e2ae582aaaca7abdb22d
+  files: ["config.json", "pytorch_model.bin", "vocab.txt", "tokenizer_config.json", "special_tokens_map.json"]
+  data_dir: ${paths.data_dir}/sft/final-v3
+  intents_file: configs/sft/intents.yaml
+  normalize: {strip_diacritics: true, unify_alef: false}   # as the SFT data
+  out_dir: ${paths.artifacts_dir}/checkpoints/${run_name}
+  max_length: 64               # messages are short (the longest SFT prompt is ~50 DanaLM tokens)
+  epochs: 3
+  lr: 2.0e-5
+  batch_size: 32
+  eval_batch: 128
+  weight_decay: 0.01
+  warmup_ratio: 0.06

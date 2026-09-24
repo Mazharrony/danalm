@@ -52,7 +52,9 @@ def main() -> None:
     }
     seq, mb = t["seq_len"], t["micro_batch"]
     windows = window_index([len(s) for s in shards["train"]], seq)
-    order = np.random.default_rng(cfg["seed"]).permutation(len(windows))
+    # a second pass shuffles with its own seed; the validation windows below always use `seed`
+    order_seed = cfg["seed"] if t.get("order_seed") is None else t["order_seed"]
+    order = np.random.default_rng(order_seed).permutation(len(windows))
     per_step = mb * t["grad_accum"]
     tokens_per_step = per_step * seq
     total_steps = len(windows) // per_step
@@ -63,6 +65,11 @@ def main() -> None:
     val_windows = val_all[val_rows[: t["eval_batches"] * mb]]
 
     model = DanaLM(mcfg).to(device)
+    if t.get("init"):  # continue from a finished run's weights, with a fresh optimizer (D-031)
+        model.load_state_dict(
+            torch.load(t["init"], map_location=device, weights_only=True)["model"]
+        )
+        print(f"initialized from {t['init']}", flush=True)
     opt = make_optimizer(model, t["lr"], tuple(t["betas"]), t["weight_decay"], fused=True)
     step = 0
     if saved := checkpoints(out):

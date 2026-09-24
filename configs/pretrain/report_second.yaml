@@ -1,0 +1,11 @@
+# Results page for the second pretraining pass (D-031 D), like report.yaml for the first pass.
+#   uv run python scripts/pretrain_report.py --config configs/pretrain/report_second.yaml
+base: [report.yaml, second_pass.yaml]   # the report settings, then the second pass's train.* (order_seed 43)
+run_name: pretrain-report-second
+
+report:
+  title: "Phase 4 results: second pretraining pass"
+  setup: D-031
+  run_dir: ${paths.artifacts_dir}/checkpoints/pretrain-second
+  plot: docs/results/phase4_second_pass.png
+  results_md: docs/results/phase4_second_pass.md

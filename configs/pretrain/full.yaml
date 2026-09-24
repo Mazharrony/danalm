@@ -24,4 +24,6 @@ train:
   keep_ckpts: 2
   compile: true                # torch.compile via triton-windows: 86k vs 45k tok/s, same outputs (D-028)
   stop_after_steps: null       # a number stops early (to test resuming)
+  init: null                   # a model.pt to start from (fresh optimizer); null = random init
+  order_seed: null             # seed of the training order; null = seed (validation always uses seed)
   peak_tflops: ${sanity.peak_tflops}

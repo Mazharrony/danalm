@@ -8,6 +8,9 @@ Usage: uv run python scripts/assemble_sft_v3.py --config configs/sft/v3.yaml
    to the training split only. New messages that repeat a training or validation message
    exactly, or nearly repeat a validation message (MinHash), are dropped, so the validation split
    stays the original examples and every comparison uses the same development set.
+3. Decontamination: every training message that equals or nearly copies a human test message,
+   by the matching of scripts/check_overlap.py, is dropped. The test set is used for nothing
+   else here.
 Writes <out_dir>/train.jsonl, val.jsonl and stats.json; `target` is rebuilt from intent and reply.
 """
 
@@ -19,6 +22,7 @@ from typing import Any
 from datasketch import MinHashLSH
 
 from danalm.config import config_from_cli
+from danalm.data.overlap import canonical, char_minhash
 from danalm.data.pipeline import minhash, normalize
 from danalm.utils.run import write_provenance
 
@@ -94,6 +98,20 @@ def main() -> None:
         splits["train"].append({k: r[k] for k in keys} | {"reply_rewritten": False, "topup": True})
         added[f"{r['intent']}/{r['variety']}"] += 1
         stats["topup/added"] += 1
+
+    d = a["decontaminate"]
+    test_texts = [canonical(t["text"], d["normalize"]) for t in read_jsonl(d["test_set"])]
+    test_lsh = MinHashLSH(threshold=d["near_dup_threshold"], num_perm=d["num_perm"])
+    for n, text in enumerate(test_texts):
+        test_lsh.insert(f"t{n}", char_minhash(text, d["char_ngram"], d["num_perm"]))
+    clean = []
+    for r in splits["train"]:
+        c = canonical(r["message"], d["normalize"])
+        if c in test_texts or test_lsh.query(char_minhash(c, d["char_ngram"], d["num_perm"])):
+            stats["train/dropped_near_copy_of_test"] += 1
+        else:
+            clean.append(r)
+    splits["train"] = clean
 
     for s, rows in splits.items():
         for r in rows:

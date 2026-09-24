@@ -1,0 +1,20 @@
+# Phase 5 results page (scripts/sft_report.py): the sweeps of D-029 / D-031 and the selection rule.
+#   uv run python scripts/sft_report.py --config configs/sft/report.yaml
+# Round 1 starts from the first pretraining pass, round 2 from the second (D-031 D and E).
+base: ../base.yaml
+run_name: sft-report
+
+report:
+  checkpoints_dir: ${paths.artifacts_dir}/checkpoints
+  rounds:
+    round1: {"1e-4": sft-r1-lr1e-4, "3e-4": sft-r1-lr3e-4, "1e-3": sft-r1-lr1e-3}
+    round2: {"1e-4": sft-r2-lr1e-4, "3e-4": sft-r2-lr3e-4, "1e-3": sft-r2-lr1e-3}
+  epochs: 5
+  tie: 0.01                    # D-029: within 1.0 point of the best intent accuracy counts as tied
+  top_confusions: 12
+  data_stats: ${paths.data_dir}/sft/final-v3/stats.json
+  reply_check_sample: ${paths.data_dir}/sft/reply-check-sample/summary.json
+  reply_check_all: ${paths.data_dir}/sft/reply-check-all/summary.json
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected.json
+  plot: docs/results/phase5_sft.png
+  results_md: docs/results/phase5_sft.md

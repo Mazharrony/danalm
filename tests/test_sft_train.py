@@ -180,3 +180,16 @@ def test_label_logprobs_match_a_direct_computation(tok, chat):
         start = len(prompt) + len(prefix)
         direct = sum(logp[t - 1, seq[0, t]].item() for t in range(start, seq.shape[1]))
         assert scores[0, j].item() == pytest.approx(direct, abs=1e-4)
+
+
+def test_select_checkpoint_breaks_near_ties_by_valid_json_then_loss():
+    from danalm.sft.evaluate import select_checkpoint
+
+    c = [
+        {"name": "a", "intent_accuracy": 0.900, "valid_json": 0.990, "val_loss": 0.50},
+        {"name": "b", "intent_accuracy": 0.895, "valid_json": 0.999, "val_loss": 0.60},
+        {"name": "c", "intent_accuracy": 0.895, "valid_json": 0.999, "val_loss": 0.55},
+        {"name": "d", "intent_accuracy": 0.880, "valid_json": 1.000, "val_loss": 0.40},
+    ]
+    assert select_checkpoint(c, tie=0.01)["name"] == "c"  # d is more than 1 point behind
+    assert select_checkpoint(c, tie=0.0)["name"] == "a"

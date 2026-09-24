@@ -231,3 +231,11 @@ def evaluate(
             "lik_conf": float(p.max()), "conf": float(p[intents.index(pred)]) if pred else 0.0,
         })  # fmt: skip
     return summarize(preds, ev["target_accuracy"]), preds
+
+
+def select_checkpoint(cands: list[dict[str, Any]], tie: float) -> dict[str, Any]:
+    """The D-029 rule: the highest intent_accuracy; candidates within `tie` of the best count as
+    tied, and among them the highest valid_json wins, then the lowest val_loss."""
+    top = max(c["intent_accuracy"] for c in cands)
+    tied = [c for c in cands if c["intent_accuracy"] >= top - tie]
+    return min(tied, key=lambda c: (-c["valid_json"], c["val_loss"]))

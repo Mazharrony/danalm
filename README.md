@@ -202,7 +202,7 @@ Stop the teacher server first: the training scripts refuse to run while it is up
 | `uv run pytest tests/test_train.py` | Learning-rate schedule, weight-decay groups, windows that make every token a target once, checkpoint pruning, bit-identical resume on the CPU | seconds |
 | `uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml` | One pilot run (~1% of the budget); the other learning rates and the resume check are listed in `configs/pretrain/pilot_report.yaml` | ~3 min each |
 | `uv run python scripts/pilot_report.py --config configs/pretrain/pilot_report.yaml` | Pilot curves, and the learning-rate rule that was fixed in advance | seconds |
-| `uv run python scripts/pretrain.py --config configs/pretrain/full.yaml` | The full run: checkpoints every 250 steps, and rerunning the command resumes from the latest | ~4 h 50 min |
+| `uv run python scripts/pretrain.py --config configs/pretrain/full.yaml` | The full run: checkpoints every 250 steps, and rerunning the command resumes from the latest (a finished run exits at once) | ~4 h 50 min |
 | `uv run python scripts/pretrain_report.py --config configs/pretrain/report.yaml` | Curves, validation loss per source, train vs validation windows, sample continuations | ~1 min |
 
 ## Repository layout

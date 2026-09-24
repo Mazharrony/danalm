@@ -5,7 +5,8 @@ Trains on one pass over the train shards (or train.total_tokens) in a seeded ord
 that make every token a target exactly once. bf16 autocast, gradient accumulation, AdamW, linear
 warmup then cosine decay, gradient clipping. Validation loss on a fixed set of validation windows
 every train.eval_every steps. Checkpoints (model, optimizer, step) go to train.out_dir every
-train.ckpt_every steps; if one is there, the run resumes from the latest. The data order depends
+train.ckpt_every steps; if one is there, the run resumes from the latest, and a finished run
+(final checkpoint and model.pt present) exits at once without a new W&B run. The data order depends
 only on the step, so a resumed run sees exactly the data it would have seen. Metrics go to W&B
 and to <out_dir>/metrics.jsonl (appended across resumes). The finished model is <out_dir>/model.pt.
 Refuses to run while the teacher server is up.
@@ -69,6 +70,9 @@ def main() -> None:
         model.load_state_dict(state["model"])
         opt.load_state_dict(state["optimizer"])
         step = state["step"]
+        if step >= total_steps and (out / "model.pt").exists():
+            print(f"already finished: {out / 'model.pt'} holds the model after {step:,} steps")
+            return
         print(f"resuming from {saved[-1]} at step {step}", flush=True)
     run = start_run(cfg, job_type="pretrain")
     net = torch.compile(model) if t["compile"] else model

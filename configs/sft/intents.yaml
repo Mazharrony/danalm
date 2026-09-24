@@ -1,6 +1,7 @@
 # DanaLM intent taxonomy (docs/DECISIONS.md D-021): 21 intents over banking, telecom and
 # food/parcel delivery, plus cross-domain intents. Shared by SFT data generation, the human test
 # set and evaluation. The model outputs exactly one `name` in {"intent": ..., "reply": ...}.
+# 2026-09-24: seven descriptions sharpened where the full run's judge confused intents (D-021).
 intents:
   # ---------------------------------------------------------------- banking
   - name: card_not_working
@@ -33,32 +34,32 @@ intents:
     description: No signal, slow or no internet, dropped calls, home internet or router problems.
   - name: plan_change
     domain: telecom
-    description: Changing, upgrading or cancelling a mobile or internet plan, add-on or data pack.
+    description: Changing, upgrading or cancelling a mobile or internet plan, add-on or data pack (roaming packs are roaming).
   - name: sim_or_number
     domain: telecom
     description: A SIM that does not work or needs replacing, eSIM, or porting or changing a number.
   - name: roaming
     domain: telecom
-    description: Activating roaming, roaming packages, or roaming charges while travelling.
+    description: Activating roaming, buying or asking about roaming packages, or roaming charges while travelling.
   # ---------------------------------------------------------------- delivery (food and parcels)
   - name: order_status
     domain: delivery
-    description: Where an order or parcel is, tracking it, or a delivery that is late.
+    description: Where an order or parcel is, tracking it, or why it is late, while it is still on its way.
   - name: missing_or_wrong_item
     domain: delivery
     description: An item is missing, wrong or damaged, or the food arrived cold or spilled.
   - name: cancel_order
     domain: delivery
-    description: The customer wants to cancel an order.
+    description: The customer wants to cancel an order, even if they also complain that it is late.
   - name: refund_request
     domain: delivery
-    description: The customer asks for a refund or compensation for an order.
+    description: The customer asks for their money back or compensation for an order, whatever the reason.
   - name: change_delivery_details
     domain: delivery
     description: Changing the delivery address, time or recipient, or rescheduling a delivery.
   - name: failed_delivery
     domain: delivery
-    description: The courier could not deliver, the parcel was sent back, or it shows delivered but never arrived.
+    description: A delivery attempt failed (the courier could not find the address or reach the customer), the parcel was sent back, or it shows delivered but never arrived.
   # ---------------------------------------------------------------- cross-domain
   - name: account_access
     domain: general
@@ -68,4 +69,4 @@ intents:
     description: The customer asks for a human agent or a manager, wants to file a formal complaint, or is very upset.
   - name: other
     domain: general
-    description: Only a greeting or thanks, or a request that none of the other intents covers (it is routed to a bigger model or a person).
+    description: A greeting, thanks or small talk, or a request no other intent covers (for example exchange rates, opening a new account, or anything outside banking, telecom and delivery). Asking for a person is handoff_to_human.

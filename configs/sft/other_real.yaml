@@ -1,0 +1,55 @@
+# D-024: real out-of-scope messages for the `other` intent, from the TRAIN splits of CLINC150
+# (English, label "oos") and MASSIVE ar-SA (Arabic, 5 per intent; takeaway_* skipped because food
+# ordering overlaps our delivery intents). Test splits stay reserved for the human test set.
+# The teacher writes the replies.
+#   uv run python scripts/fetch_labelled.py --config configs/sft/other_real.yaml
+#   uv run python scripts/write_replies.py  --config configs/sft/other_real.yaml
+base: full.yaml
+run_name: sft-other-real
+
+fetch:
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  used_for: supervised fine-tuning (Phase 5), intent other
+  sources:
+    - name: clinc-oos-train
+      repo_id: clinc/clinc_oos
+      revision: 155b9c710419136e17307b80d0a13e68cd46b4ec
+      files: plus/train-*.parquet
+      text_column: text
+      label_column: intent
+      label_map: {oos: other}
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: null
+      max_per_label: null
+      max_rows: 250
+      licence: CC-BY-3.0
+      kind: real (crowdsourced)
+      description: English out-of-scope assistant queries (CLINC150 "oos", train split only)
+    - name: massive-ar-train-oos
+      repo_id: AmazonScience/massive
+      revision: ed58ac423a2f4121720918bf5301577edce4ffd3  # refs/convert/parquet
+      files: ar-SA/train/*.parquet
+      text_column: utt
+      label_column: intent
+      label_map: {"*": other}
+      exclude_label_prefixes: [takeaway_]
+      variety: saudi_arabic
+      max_per_intent: null
+      max_per_label: 5
+      max_rows: 250
+      licence: CC-BY-4.0
+      kind: real (localized by native speakers)
+      description: Arabic (ar-SA) assistant requests outside our domains, up to 5 per MASSIVE intent (train split only, takeaway_* skipped)
+
+replies:
+  inputs: ["${fetch.out_dir}/messages.jsonl"]
+  varieties:
+    english: {reply_style: "${sft.reply_styles.english}", reply_langs: [en], gulf_filter: false}
+    saudi_arabic: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+  batch: 10
+  max_rows: null
+  out_dir: ${fetch.out_dir}
+  params: ${sft.params}
+  system: ${sft.system}
+  prompt: ${sft.reply_prompt}

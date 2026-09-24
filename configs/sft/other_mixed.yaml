@@ -1,0 +1,17 @@
+# D-024: more code-mixed `other` examples. The full run kept only 13, because the teacher wrote
+# greetings and thanks in pure Arabic (398 rejected as message_lang_ar).
+#   uv run python scripts/generate_sft.py --config configs/sft/other_mixed.yaml
+base: full.yaml
+run_name: sft-other-mixed
+
+sft:
+  only_intents: [other]
+  only_varieties: [mixed]
+  varieties:
+    mixed:
+      requests_per_cell: 40
+      style: >-
+        Write the message mixing Emirati Gulf Arabic (Arabic script) with English words in the
+        same sentence, as people in the UAE often do (for example "الطلب ما وصل and the app says
+        delivered"). Greetings, thanks and small talk mix too (for example "هلا، thanks وايد على
+        المساعدة"). Never only English, never only Arabic. Never use Egyptian or Levantine words.

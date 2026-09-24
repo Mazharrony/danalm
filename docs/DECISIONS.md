@@ -175,6 +175,26 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 - **Known limit:** Arabizi without digits ("shlonak, abi agayer el card") is tagged `en`. The
   Phase 6 per-language breakdown will use human-verified labels on the test set, not this
   heuristic, and Phase 2 will measure the heuristic against those labels.
+- **Update (2026-09-24, Phase 2, approved by the owner):**
+  - **Old rule:** a single digit-letter token made Latin text Arabizi. That tagged 3.8% of
+    FineWeb-Edu documents and 2.1% of English Wikipedia documents as Arabizi, from tokens like
+    "5ES" and "7up".
+  - **New rule:** Latin text is Arabizi when at least 10% of its words are evidence. Evidence is
+    either a digit-letter word or one of 40 common Gulf Arabizi words, each at most 1.5 per
+    million words in 23.5M words of English web text.
+  - **Measured** (accuracy = share tagged correctly):
+
+    | Labelled set | Old rule | New rule |
+    |---|---:|---:|
+    | English web documents (30,000) | 96.12% | 100.00% |
+    | English customer-service texts: Bitext and CLINC (20,000) | 99.98% | 100.00% |
+    | English SFT messages (5,807) | 100% | 100% |
+    | Arabizi SFT messages (6,080) | 91.30% | 99.90% |
+
+    Thresholds of 10%, 15% and 20%, and a minimum of 2 evidence words, were compared. 10% with
+    one evidence word was best on every set. The Arabizi labels come from the synthetic SFT
+    data, so they are only as good as the teacher's Arabizi. The human test set will measure
+    the rule again.
 
 ## D-012 · Phase 0 · Data policy and ledger
 

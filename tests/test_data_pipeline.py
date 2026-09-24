@@ -153,6 +153,12 @@ def test_detect_lang(text, lang):
         ("my 2nd card was blocked at 5pm", "en"),
         ("I did not get the 2FA code", "en"),
         ("3DS verification failed", "en"),
+        # one model number in a longer English text used to make the whole text Arabizi
+        ("The 7up bottling plant in our town employed many workers during the summer season", "en"),
+        ("Vanadium oxide V2O5 is a catalyst used in the contact process for sulfuric acid", "en"),
+        # Arabizi without digits used to be tagged English
+        ("laish ma yshtaghil el card", "arabizi"),
+        ("shlon asawi reset lel password", "arabizi"),
     ],
 )
 def test_detect_lang_regressions(raw, lang):

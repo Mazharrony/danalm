@@ -72,6 +72,16 @@ WS = re.compile(r"\s+")
 AR_CHAR = re.compile("[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]")
 LAT_CHAR = re.compile(r"[A-Za-z]")
 ARABIZI_HINT = re.compile(r"\b\w*[a-zA-Z][2356789][a-zA-Z]\w*\b|\b[2356789][a-zA-Z]{2,}\b")
+LATIN_WORD = re.compile(r"[A-Za-z0-9']+")
+# Common Gulf Arabizi words without digits. Each is nearly absent from English web text: at most
+# 1.5 per million words (shu) in 23.5M words of FineWeb-Edu + English Wikipedia (Phase 2, D-011).
+_ARABIZI_WORD_LIST = """
+abi abgha abga laish leish shlon shlonak shlonich shu wain wayed waayed zain zein wala walla wallah
+yalla inshallah mashallah habibi khalas shukran mafi hada hatha haka liya jdid jadid waqt kthir
+jiddan fawran ghalat ykoun ykoon mashi alhin alheen
+"""
+ARABIZI_WORDS = frozenset(_ARABIZI_WORD_LIST.split())
+ARABIZI_MIN_SHARE = 0.1  # share of Latin words that must be Arabizi evidence
 # English number+suffix tokens that look like Arabizi digit-letters: 2nd, 5pm, 2FA, 3DS, 10GB ...
 EN_NUMERIC = re.compile(
     r"\b\d+(?:st|nd|rd|th|am|pm|fa|ds|gb|mb|kg|km|min|mins|hr|hrs|aed|dhs|usd)\b", re.IGNORECASE
@@ -112,8 +122,10 @@ def mask_pii(text: str) -> str:
 def detect_lang(text: str) -> str:
     """Script-based tag: ar | en | mixed | arabizi | other. No model download needed.
 
-    PII placeholders are ignored, and English number+suffix tokens (2nd, 5pm, 2FA) are not
-    Arabizi evidence. Known limit: Arabizi without digits ("shlonak, abi") is tagged "en".
+    Latin-script text is Arabizi when at least ARABIZI_MIN_SHARE of its words are evidence: a
+    digit used as a letter (3andi, al7een) or a common Gulf Arabizi word (laish, shlon). So one
+    model number in a long English text ("7up", "V2O5") no longer makes it Arabizi. PII
+    placeholders are ignored, and English number+suffix tokens (2nd, 5pm, 2FA) are not evidence.
     """
     text = PLACEHOLDER.sub(" ", text)
     ar, lat = len(AR_CHAR.findall(text)), len(LAT_CHAR.findall(text))
@@ -124,7 +136,9 @@ def detect_lang(text: str) -> str:
     if ar_ratio > 0.85:
         return "ar"
     if ar_ratio < 0.15:
-        return "arabizi" if ARABIZI_HINT.search(EN_NUMERIC.sub(" ", text)) else "en"
+        words = LATIN_WORD.findall(EN_NUMERIC.sub(" ", text))
+        evidence = sum(1 for w in words if ARABIZI_HINT.fullmatch(w) or w.lower() in ARABIZI_WORDS)
+        return "arabizi" if words and evidence / len(words) >= ARABIZI_MIN_SHARE else "en"
     return "mixed"
 
 

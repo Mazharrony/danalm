@@ -774,3 +774,50 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   per variety. A missed bar is reported as missed; the bars are not moved after the test set
   has been scored.
 - **Why:** writing the bar down before any result exists keeps the evaluation honest.
+
+## D-031 · Phase 5 · Overnight improvement run (2026-09-24/25)
+
+- **Decision:** the owner approved the plan and said "go" at about 20:00. It is a 12-hour chain,
+  and every choice in it is fixed here, before any result exists.
+  - **A. Reply cleaning.** This updates D-029.
+    - The 500-reply sample estimated 3.8% broken replies: Gulf Arabic 7.2%, Arabizi 4.0%,
+      mixed 3.2%, English 0.8%. That is above the 3% threshold, so every train and validation
+      reply is judged.
+    - The owner chose to **rewrite** broken replies instead of dropping them, to keep every
+      message. Qwen writes a new reply with the Phase 2 reply rules. The new reply must pass the
+      same filters (language, no claimed actions, Gulf dialect) and a second judgement, or the
+      example is dropped.
+    - Caveat: the judge missed both canaries, so some broken replies will remain.
+  - **B. Top-up and contrast.**
+    - Every intent × variety cell (not `saudi_arabic`) with fewer than 200 examples is topped up
+      towards 250 kept examples. That is 26 cells and about 3,200 examples.
+    - The intents that get confused (order_status, failed_delivery, cancel_order,
+      refund_request, card_not_working, lost_or_stolen_card, transfer_issue,
+      unrecognized_transaction, handoff_to_human, other) get at least 6 requests per variety.
+      Each of their prompts adds a rule that makes the message clearly that intent and not its
+      neighbour.
+    - The generation rules, filters, blind label judge and reply check are the same as before.
+    - New examples go to the **training split only**. Any new message that is a near copy of a
+      validation message is dropped. The validation split stays the original 968 examples,
+      cleaned, so every comparison tonight uses the same development set.
+  - **C. SFT round 1** on the pretrained model (D-028), with the D-029 sweep and selection rule,
+    on the data from A and B.
+  - **D. Second pretraining pass.**
+    - It starts from the final weights with a fresh optimizer and makes one more pass over the
+      same train shards, in a new order (seed 43).
+    - The learning rate warms up over 200 steps to 1e-3, then follows a cosine to 1e-4.
+      Everything else is as in D-028.
+    - It is kept only if its validation loss on the same fixed validation windows is below
+      3.330.
+  - **E. SFT round 2** runs on the new base, if D is kept, with the same sweep and rule. The
+    Phase 5 model is the better of the two round winners by the D-029 rule on the same
+    development set.
+  - **G. Baseline preparation for Phase 6 (D-027).**
+    - CAMeLBERT-mix is fine-tuned as an intent classifier on the same SFT training messages:
+      learning rate 2e-5, batch 32, 3 epochs.
+    - The best epoch is chosen by accuracy on the SFT validation split. The human test set is
+      not used.
+  - **Not tonight:** no test-set evaluation, no push, and no change to the intent taxonomy.
+- **Why:** the model's clearest weaknesses are in the data: broken replies, thin mixed and
+  Arabizi cells, and intents that get confused. Pretraining loss was also still falling at the
+  end of the first pass.

@@ -44,12 +44,37 @@ the per-intent and per-variety numbers in Phase 6 mean something.
 
 The test splits of two licence-compatible datasets were written by people:
 
-- **Banking77** (CC-BY-4.0): real banking questions.
+- **Banking77** (CC-BY-4.0): online-banking questions labelled by intent. Its documentation does
+  not say who wrote them; the licence was checked in the original PolyAI repository.
 - **CLINC150** (CC-BY-3.0): includes out-of-scope questions, which map to `other`.
 
 Their labels are mapped to our intents by rule, and then **a person checks every mapped example**
 before it enters the test set (`source` records which dataset it came from). Only their test
 splits may be used, never the train splits that feed training data.
+
+The mapping covers 10 of the 21 intents (banking, `account_access`, `order_status`, `other`).
+The telecom and most delivery intents have no public English test data, so a person writes those.
+The steps (`configs/data/test_candidates_en.yaml`):
+
+```bash
+uv run python scripts/fetch_labelled.py --config configs/data/test_candidates_en.yaml
+uv run python scripts/check_overlap.py --config configs/data/overlap.yaml "overlap.test_files=[\"data/test/candidates-en/messages.jsonl\"]" overlap.test_field=message
+uv run python scripts/make_review_sheet.py --config configs/data/test_candidates_en.yaml
+```
+
+1. Open `data/test/candidates-en/review.csv` (Excel works).
+2. For each row, write `y` or `n` in `keep`.
+3. If the proposed intent is wrong, write the right one in `correct_intent`. Anything unusual
+   goes in `notes`.
+4. Import the kept rows with your initials, then re-run the overlap check on the test set:
+
+```bash
+uv run python scripts/import_review.py --config configs/data/test_candidates_en.yaml review.verified_by=XX
+uv run python scripts/check_overlap.py --config configs/data/overlap.yaml
+```
+
+Candidates that overlap training data never reach the sheet. The first run dropped 48 of 160,
+mostly CLINC150 test sentences that nearly repeat its train split.
 
 ## Checks before every evaluation
 

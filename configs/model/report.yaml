@@ -1,0 +1,13 @@
+# Phase 3 results page and model-size choice. The rule below was written BEFORE any sanity run.
+#   uv run python scripts/phase3_report.py --config configs/model/report.yaml
+base: ../base.yaml
+run_name: phase3-report
+
+report:
+  candidates: [model-small, model-medium, model-large]   # run names of the sanity runs
+  rule:
+    max_hours_per_pass: 12      # one pass over the train shards must fit in about one night
+    max_init_loss_gap: 0.5      # |initial loss - ln(vocab)|: the init is sound
+    overfit_must_pass: true     # the model can fit a single batch
+  # the largest candidate (by parameters) that meets every condition is chosen
+  results_md: docs/results/phase3_model.md

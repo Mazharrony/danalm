@@ -707,3 +707,70 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     customer-service register ("Please feel free to reach out ..."), repetition in Gulf Arabic,
     and gibberish in Arabizi. The Arabizi result is expected, because the corpus has almost no
     Arabizi. Answering in the right format and intent is the job of Phase 5 (SFT).
+
+## D-029 · Phase 5 · SFT setup, reply check and selection rule
+
+- **Decision:** this is fixed before any SFT run. The owner approved the plan on 2026-09-24.
+  - **Format:** `<|user|>{message}<|assistant|>{"intent": …, "reply": …}<|endoftext|>`, using
+    the tokenizer's reserved special tokens. The message is normalized as in the SFT data
+    (`normalize`, which also masks PII), both in training and at inference.
+  - **Loss:** only on the answer tokens, that is the JSON and the end token.
+  - **Data:** `data/sft/final` (17,579 train, 968 validation), unless the reply check below
+    filters it.
+  - **Optimizer and schedule:** training starts from the pretrained `model.pt` (D-028).
+    - AdamW (β 0.9/0.95, weight decay 0.1), with 64 examples per step.
+    - 3% warmup, then cosine decay to 10% of the peak. Gradients are clipped at 1.0.
+    - bf16 autocast, up to 5 epochs, with a checkpoint and an evaluation after every epoch.
+  - **Sweep:** peak learning rates 1e-4, 3e-4 and 1e-3.
+  - **Development metrics,** on the SFT validation split only. The human test set is never
+    used.
+    - Validation loss on the answer tokens.
+    - With greedy decoding:
+      - **valid-JSON rate:** the output parses, has exactly `intent` and `reply` as strings, and
+        the intent is one of the 21;
+      - **intent accuracy and macro-F1**, where an invalid output counts as wrong;
+      - **reply-language rate:** the reply's detected language is one that the message's variety
+        allows (`configs/sft/generate.yaml`).
+    - **Intent by likelihood:** the most likely of the 21 labels after `{"intent": "`. Its
+      probability is the model's confidence.
+- **Selection rule:** take the checkpoint with the highest greedy intent accuracy among the 15
+  (3 learning rates × 5 epochs).
+  - Checkpoints within 1.0 point of the best count as tied.
+  - Among the tied ones, take the highest valid-JSON rate, then the lowest validation loss.
+- **Reply check before training (the owner's request):** a spot check found broken words in
+  Arabic replies: "سنبعد الطلب" for "سنبعث الطلب", and "سنعبر رسالتك". The label judge (D-022)
+  never checked replies.
+  - **Sample:** Qwen3.5-35B-A3B judges 500 training replies, 125 each from Gulf Arabic, English,
+    Arabizi and mixed messages (seeded), at temperature 0. Each reply is judged OK or BROKEN
+    (with a reason). BROKEN means a misspelled or wrong word, broken grammar that a native
+    reader would notice, or the wrong language.
+  - **Canaries:** the two replies above are judged separately and not counted. Qwen wrote these
+    replies itself and may miss its own mistakes; the canaries show whether it catches known
+    ones.
+  - **Threshold:** weight each variety's broken rate by its share of the training set. If that
+    estimate is above **3%**, judge every training and validation reply and drop the broken
+    ones before training. Otherwise use the data as it is and report the rate.
+- **Distillation:** the SFT data is already sequence-level distillation, because the student
+  learns the outputs the teacher wrote. Word-level distillation (matching the teacher's token
+  probabilities) is not possible: Qwen's 248k-token vocabulary differs from DanaLM's 16k. So
+  there is no separate distillation step.
+
+## D-030 · Phase 6 · What counts as good, fixed before any SFT result
+
+- **Decision:** the owner accepted these on 2026-09-24, before training. On the human test set,
+  DanaLM meets its goal when all four hold:
+  1. **Valid JSON ≥ 99%,** with greedy decoding and no constrained decoding.
+  2. **Intent macro-F1 within 3 points of the CAMeLBERT-mix baseline** (D-027) on the same test
+     set.
+  3. **Coverage ≥ 70% at ≥ 95% accuracy.** The confidence is the model's probability for the
+     intent it outputs, among the 21 labels (D-029).
+     - The threshold is fixed on the SFT validation split before the test set is scored: the
+       lowest one at which the validation messages above it are at least 95% right.
+     - On the test set, the messages above the threshold must be at least 70% of all messages,
+       and at least 95% of them must be right. The rest go to a person or a bigger model, as in
+       the brief's business case.
+  4. **Reply in the right language ≥ 95%,** by the per-variety rule of D-029.
+- **Reporting:** each bar is reported as met or missed, with the measured number overall and
+  per variety. A missed bar is reported as missed; the bars are not moved after the test set
+  has been scored.
+- **Why:** writing the bar down before any result exists keeps the evaluation honest.

@@ -9,6 +9,9 @@ import re
 
 from danalm.data.dialect import non_gulf_markers
 from danalm.data.pipeline import detect_lang
+from danalm.teacher.client import parse_json_objects
+
+VERDICTS = ("OK", "BROKEN")
 
 _CLAIM_EN = re.compile(
     r"\b(?:has been|have been|is now|are now|was sent|were sent|is frozen|is blocked|"
@@ -36,3 +39,24 @@ def reply_problem(reply: str, reply_langs: list[str], gulf_filter: bool) -> str 
     if gulf_filter and non_gulf_markers(reply):
         return "non_gulf_dialect"
     return None
+
+
+def parse_verdicts(answer: str, n: int) -> dict[int, tuple[str, str]]:
+    """{number: (verdict, reason)} from a judge's JSON lines such as
+    {"n": 3, "verdict": "BROKEN", "reason": "..."} (D-029 reply check). Lines whose number is
+    outside 1..n or whose verdict is not OK or BROKEN are skipped."""
+    out = {}
+    for obj in parse_json_objects(answer):
+        k, verdict = obj.get("n"), str(obj.get("verdict", "")).strip().upper()
+        if isinstance(k, int) and 1 <= k <= n and verdict in VERDICTS:
+            out[k] = (verdict, str(obj.get("reason") or "").strip())
+    return out
+
+
+def weighted_rate(hits: dict[str, int], judged: dict[str, int], share: dict[str, float]) -> float:
+    """Estimated rate over a whole set from a sample stratified by variety: each sampled
+    variety's rate (hits / judged) weighted by its share of the set, renormalized over the
+    varieties that were sampled."""
+    sampled = [v for v in judged if judged[v]]
+    total = sum(share[v] for v in sampled)
+    return sum(share[v] * hits[v] / judged[v] for v in sampled) / total

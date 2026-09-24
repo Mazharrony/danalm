@@ -1,0 +1,44 @@
+# D-029 reply check: the teacher judges the wording of the SFT replies before training.
+#   uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml
+# If the sample's estimate is above check.threshold, judge every reply and drop the broken ones:
+#   uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml check.scope=all
+base: ../teacher/qwen35_35b_a3b.yaml
+run_name: sft-reply-check
+
+check:
+  data_dir: ${paths.data_dir}/sft/final
+  out_dir: ${paths.data_dir}/sft/reply-check-${check.scope}   # scope=all also writes the filtered splits here
+  scope: sample                # sample: a stratified sample of train; all: every reply of both splits
+  sample_per_variety: 125
+  varieties: [gulf_arabic, english, arabizi, mixed]
+  threshold: 0.03              # D-029: above this estimated broken share, judge all replies and filter
+  batch: 10                    # replies per request; one variety per request
+  canaries:                    # known broken replies (D-029): judged on their own, never counted
+    - {variety: gulf_arabic, reply: "لا تتردد، سنبعد الطلب لفريقنا ليحقق معك قريبا."}
+    - {variety: gulf_arabic, reply: "سنعبر رسالتك ليقوم الفريق بمراجعة حسابك والرد عليك."}
+  languages:                   # what the reply should be written in, per message variety (D-023)
+    gulf_arabic: Arabic in Arabic script (Gulf Arabic or simple standard Arabic)
+    arabizi: Arabic in Arabic script (Gulf Arabic or simple standard Arabic)
+    saudi_arabic: Arabic in Arabic script (Gulf Arabic or simple standard Arabic)
+    mixed: Arabic in Arabic script (Gulf Arabic or simple standard Arabic), sometimes keeping English words
+    english: English
+  params:
+    temperature: 0.0
+    max_tokens: 1500
+    chat_template_kwargs: {enable_thinking: false}
+  system: >-
+    You are a careful proofreader of customer-service replies. Follow the requested format
+    exactly and output nothing else.
+  prompt: >-
+    Below are {n} numbered replies written by a customer-service assistant in the UAE. They
+    should be in {language}.
+    Mark a reply BROKEN only if it has an error that a native reader would notice: a misspelled
+    word, a wrong word that makes no sense in the sentence, broken grammar, garbled or unfinished
+    text, or the wrong language. Simple, formal or generic wording is fine: mark it OK.
+
+
+    {replies}
+
+
+    Output exactly {n} lines, each one JSON object:
+    {{"n": <reply number>, "verdict": "OK" or "BROKEN", "reason": "<short reason if BROKEN, else empty>"}}.

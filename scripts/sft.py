@@ -12,6 +12,7 @@ Metrics go to <out_dir>/metrics.jsonl and W&B. A finished run exits at once; an 
 starts over (a run takes minutes). Refuses to run while the teacher server is up.
 """
 
+import contextlib
 import json
 import math
 import random
@@ -53,9 +54,11 @@ def check_targets(rows: list[dict], enc: list[tuple[list[int], list[int]]], pref
 
 def main() -> None:
     cfg = config_from_cli(__doc__)
-    assert_teacher_stopped(cfg["teacher"]["host"], cfg["teacher"]["port"])
-    set_seed(cfg["seed"], cfg["deterministic"])
     d, t, ev = cfg["sft_data"], cfg["train"], cfg["eval"]
+    device = t["device"]
+    if device == "cuda":  # the teacher and the student never share the GPU
+        assert_teacher_stopped(cfg["teacher"]["host"], cfg["teacher"]["port"])
+    set_seed(cfg["seed"], cfg["deterministic"])
     out = Path(t["out_dir"])
     out.mkdir(parents=True, exist_ok=True)
     metrics_path = out / "metrics.jsonl"
@@ -64,7 +67,6 @@ def main() -> None:
         print(f"already finished: {out}")
         return
 
-    device = "cuda"
     tok = Tokenizer.from_file(d["tokenizer_file"])
     chat = ChatTokens.from_tokenizer(tok, d["special"])
     intents = [i["name"] for i in load_intents(d["intents_file"])]
@@ -81,7 +83,9 @@ def main() -> None:
     state = torch.load(t["init"], map_location="cpu", weights_only=True)
     model = DanaLM(ModelConfig(**state["model_config"])).to(device)
     model.load_state_dict(state["model"])
-    opt = make_optimizer(model, t["lr"], tuple(t["betas"]), t["weight_decay"], fused=True)
+    opt = make_optimizer(
+        model, t["lr"], tuple(t["betas"]), t["weight_decay"], fused=device == "cuda"
+    )
     lengths = [len(ids) for ids, _ in enc["train"]]
     per_epoch = math.ceil(len(lengths) / t["batch_size"])
     total = per_epoch * t["epochs"]
@@ -91,7 +95,9 @@ def main() -> None:
     print(f"{len(lengths):,} training examples, {per_epoch} steps per epoch, {total} steps; "
           f"longest answer {longest} tokens", flush=True)  # fmt: skip
 
-    def autocast() -> torch.autocast:
+    def autocast() -> contextlib.AbstractContextManager:
+        if device != "cuda":  # the CPU (tests, smoke runs) computes in float32
+            return contextlib.nullcontext()
         return torch.autocast("cuda", dtype=torch.bfloat16)
 
     metrics_path.write_text("", encoding="utf-8")  # an unfinished run starts over

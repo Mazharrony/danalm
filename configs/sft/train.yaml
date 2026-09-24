@@ -19,6 +19,7 @@ sft_data:
     saudi_arabic: [ar]
 
 train:
+  device: cuda                 # cpu only for smoke tests
   init: ${paths.artifacts_dir}/checkpoints/pretrain-full/model.pt
   out_dir: ${paths.artifacts_dir}/checkpoints/${run_name}
   lr: 3.0e-4

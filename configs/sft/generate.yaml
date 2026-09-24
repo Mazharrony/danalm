@@ -44,7 +44,7 @@ sft:
     Output exactly {n} lines, each one JSON object: {{"message": "...", "reply": "..."}}.
   intent_rules:
     handoff_to_human: " The reply says you will connect them to a human agent."
-    other: " The reply answers a greeting or thanks politely and says what you can help with."
+    other: " For a greeting or thanks, the reply answers politely and says what you can help with; for any other request, it says briefly that the question will be passed on to someone who can help."
   reply_prompt: >-             # write_replies.py: replies for existing messages, in batches
     Below are {n} numbered customer messages to a UAE customer-service chatbot, each with its
     intent. Write the assistant's reply to each message. {reply_style}

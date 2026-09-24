@@ -1,0 +1,23 @@
+# Phase 4 pilot report and learning-rate choice. The rule below was written BEFORE the pilot runs.
+#   uv run python scripts/pilot_report.py --config configs/pretrain/pilot_report.yaml
+# Pilot runs (each ~1% of the full run, configs/pretrain/pilot.yaml):
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml run_name=pretrain-pilot-lr5e-4 train.lr=5.0e-4 train.min_lr=5.0e-5
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml run_name=pretrain-pilot-lr2e-3 train.lr=2.0e-3 train.min_lr=2.0e-4
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml run_name=pretrain-pilot-resume train.stop_after_steps=24
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml run_name=pretrain-pilot-resume   (resumes)
+base: ../base.yaml
+run_name: pilot-report
+
+report:
+  runs: {"5e-4": pretrain-pilot-lr5e-4, "1e-3": pretrain-pilot, "2e-3": pretrain-pilot-lr2e-3}
+  resume_run: pretrain-pilot-resume   # the 1e-3 pilot, stopped at step 24 and resumed
+  resume_lr: "1e-3"
+  checkpoints_dir: ${paths.artifacts_dir}/checkpoints
+  pilot_config: configs/pretrain/pilot.yaml
+  full_config: configs/pretrain/full.yaml
+  rule:
+    max_spike: 0.5    # a learning rate whose train loss rises by more than this after warmup is unstable
+    tie_margin: 0.02  # among stable ones, the lowest whose final val loss is within this of the best
+  plot: docs/results/phase4_pilot.png
+  results_md: docs/results/phase4_pilot.md

@@ -73,9 +73,8 @@ def main() -> None:
     chosen = min((lr for lr in stable if final[lr] - final[best] <= rule["tie_margin"]), key=float)
     both = {x["step"]: x["train_loss"] for x in straight if "train_loss" in x}
     diffs = [abs(both[x["step"]] - x["train_loss"]) for x in resumed if x.get("step") in both and "train_loss" in x]  # fmt: skip
-    speed = [x["tokens_per_s"] for x in straight if "tokens_per_s" in x][
-        1:
-    ]  # skip the compile step
+    # skip the first logged interval, which includes compiling
+    speed = [x["tokens_per_s"] for x in straight if "tokens_per_s" in x][1:]
     tps = sorted(speed)[len(speed) // 2]
     index = json.loads((Path(full["tokens_dir"]) / "index.json").read_text(encoding="utf-8"))
     lengths = [f["tokens"] for f in index["splits"]["train"]["files"]]

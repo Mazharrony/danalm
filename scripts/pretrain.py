@@ -128,14 +128,15 @@ def main() -> None:
         if record:
             log(record)
             print(json.dumps(record), flush=True)
-        if step % t["ckpt_every"] == 0 or step == total_steps:
+        stopping = bool(t["stop_after_steps"]) and t["stop_after_steps"] <= step < total_steps
+        if step % t["ckpt_every"] == 0 or step == total_steps or stopping:
             state = {"model": model.state_dict(), "optimizer": opt.state_dict(), "step": step}
             save_checkpoint(out / f"step_{step}.pt", state)
             prune_checkpoints(out, t["keep_ckpts"])
         if record or step % t["ckpt_every"] == 0:  # time only training, not evals or saves
             start, tokens_timed = time.perf_counter(), 0
-        if t["stop_after_steps"] and step >= t["stop_after_steps"] and step < total_steps:
-            print(f"stopping early at step {step} (stop_after_steps)", flush=True)
+        if stopping:
+            print(f"stopped at step {step} (stop_after_steps), checkpoint saved", flush=True)
             break
     if step == total_steps:
         final = {"model": model.state_dict(), "model_config": cfg["model"], "steps": step,

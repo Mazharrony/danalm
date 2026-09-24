@@ -5,7 +5,7 @@ service in Gulf Arabic, English, Arabizi and mixed text. For each customer messa
 strict JSON, `{"intent": "...", "reply": "..."}`. It is meant to run quantized on a CPU or phone:
 it answers the easy majority of messages on-device and hands the rest to a bigger model or a human.
 
-**Status:** Phase 2 (data) is done, and Phase 3 (model) is next.
+**Status:** Phase 3 (model) is done, and Phase 4 (pretraining) is next.
 
 - **Tokenizer (Phase 1):** `danalm-v1` is a 16,384-token byte-level BPE for Arabic, English and
   Arabizi. Against Qwen3.5's 248k-token tokenizer, it needs 14% fewer tokens on Gulf Arabic and
@@ -14,15 +14,23 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
   (including 300M tokens of Najdi dialect) and 36% English. It is cleaned, deduplicated,
   tokenized, and checked by decoding sample documents back to their text
   ([results](docs/results/phase2_data.md)).
-- **SFT data (Phase 2b):** 18,233 customer-service examples covering 21 intents, in Gulf Arabic,
-  English, Arabizi and mixed text. A local Qwen3.5-35B-A3B teacher wrote them. Filters removed
-  non-Gulf dialect, formal Arabic, and replies that claim actions the assistant cannot take. A
-  blind judge then agreed with 87.3% of the labels
-  ([teacher pilot](docs/results/phase2_teacher_pilot.md), [results](docs/results/phase2_data.md)).
+- **SFT data (Phase 2b):** 18,547 customer-service examples covering 21 intents, in Gulf Arabic,
+  English, Arabizi and mixed text.
+  - A local Qwen3.5-35B-A3B teacher wrote them. Arabizi messages are answered in Gulf Arabic
+    script (D-023).
+  - The `other` intent adds 491 real out-of-scope questions from CLINC150 and MASSIVE (D-024).
+  - Filters removed non-Gulf dialect, formal Arabic, and replies that claim actions the
+    assistant cannot take.
+  - A blind judge, working from the final intent descriptions, agreed with 87.9% of the labels.
+  ([teacher pilot](docs/results/phase2_teacher_pilot.md), [results](docs/results/phase2_data.md))
+- **Model (Phase 3):** a Llama-style decoder with RMSNorm, RoPE, grouped-query attention,
+  SwiGLU and tied embeddings, at 62.1M parameters. It passes the pre-training sanity checks:
+  initial loss 9.705 against ln(16,384) = 9.704, and it overfits one batch. On the RTX 4070 it
+  trains at 46k tokens/s, or 9.0 h per pass over the corpus
+  ([results](docs/results/phase3_model.md)).
 - **Open:**
-  - The human-written test set needs a native Gulf Arabic speaker.
-  - The Arabizi replies and the `other` intent need another pass before SFT training (D-022 in
-    the decision log).
+  - The human test set: 65 English candidates from the Banking77 and CLINC150 test splits wait
+    for review. The Arabic parts need a native Gulf Arabic speaker (D-025).
 
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
 choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
@@ -79,10 +87,24 @@ Run these one at a time as well.
 |---|---|---|
 | `make pretrain-data` | Samples the 10 corpus sources at pinned revisions, cleans them, writes 100M-token uint16 shards and checks them against the text | ~40 + 70 + 16 min |
 | `uv run python scripts/generate_sft.py --config configs/sft/full.yaml` | Generates ~30k SFT examples with the teacher and filters them | ~4.6 h |
-| `uv run python scripts/verify_sft.py --config configs/sft/full.yaml` | The judge re-labels every kept message without seeing the intended label | ~31 min |
-| `uv run python scripts/build_sft_dataset.py --config configs/sft/build.yaml` | Keeps the examples the judge agreed with and splits train/val | seconds |
+| `uv run python scripts/write_replies.py --config configs/sft/arabizi_replies.yaml` | New Gulf Arabic replies for the Arabizi messages (D-023) | ~55 min |
+| `uv run python scripts/fetch_labelled.py --config configs/sft/other_real.yaml`, then `write_replies.py` with the same config | Real out-of-scope messages for `other`, with teacher replies (D-024) | ~7 min |
+| `uv run python scripts/generate_sft.py --config configs/sft/other_mixed.yaml` | Code-mixed `other` top-up | ~4 min |
+| `uv run python scripts/merge_sft.py --config configs/sft/final.yaml` | Combines all sources into one candidate file | seconds |
+| `uv run python scripts/verify_sft.py --config configs/sft/final.yaml` | The judge re-labels every candidate without seeing the intended label | ~32 min |
+| `uv run python scripts/build_sft_dataset.py --config configs/sft/final.yaml` | Keeps the examples the judge agreed with and splits train/val | seconds |
 | `uv run python scripts/phase2_report.py --config configs/data/phase2_report.yaml` | Writes `docs/results/phase2_data.md` from the outputs | seconds |
-| `uv run python scripts/check_overlap.py --config configs/data/overlap.yaml` | Fails if a test message is too close to any training text (for the human test set) | not measured yet |
+| `uv run python scripts/check_overlap.py --config configs/data/overlap.yaml` | Fails if a test message is too close to any training text (for the human test set) | ~7 min |
+
+The English test-set candidates and their review are described in [docs/TEST_SET.md](docs/TEST_SET.md).
+
+### Phase 3: model
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run pytest tests/test_model.py` | Shapes, causality, tied weights, RoPE, masked loss, parameter and FLOP formulas, overfitting a batch | seconds |
+| `uv run python scripts/model_sanity.py --config configs/model/large.yaml` | The brief's checks on the GPU: initial loss vs ln(vocab), overfit one batch, tokens/s, peak VRAM, MFU | ~1 min per size |
+| `uv run python scripts/phase3_report.py --config configs/model/report.yaml` | Compares the sizes and applies the size rule that was fixed in advance | seconds |
 
 ## Repository layout
 
@@ -92,8 +114,8 @@ docs/          project brief, decision log, data ledger, test-set guide,
                results/ (measured results per phase)
 scripts/       command-line entry points
 src/danalm/    library: config, seeding, run tracking, data pipeline and token shards,
-               HF sampler, ledger, dialect and reply checks, teacher server and client
-               (with resumable answer logs), tokenizer
+               HF sampler, labelled public datasets, ledger, dialect and reply checks,
+               teacher server and client (with resumable answer logs), tokenizer, model
 tests/         unit tests and tiny synthetic fixtures
 data/ runs/ artifacts/   gitignored: datasets, run records, tokenizers and checkpoints
 ```

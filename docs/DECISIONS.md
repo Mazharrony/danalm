@@ -33,6 +33,7 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-025 | 2 | English part of the human test set: Banking77 and CLINC150 test splits, rule-mapped, overlap-checked, checked by a person |
 | D-026 | 3 | Model: Llama-style decoder, 62.1M parameters (large), chosen by a rule fixed before the sanity runs |
 | D-027 | 6 | Baseline classifier: CAMeLBERT-mix (Apache-2.0) instead of MARBERT/AraBERT |
+| D-028 | 4 | Pretraining: one pass, 262k tokens/step, cosine LR peak 2e-3 (chosen by a pilot rule), bf16, torch.compile, checkpoints with resume |
 
 ---
 
@@ -642,3 +643,45 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   allows only clearly licensed material. CAMeLBERT-mix was pretrained on MSA, dialectal and
   classical Arabic, which fits Gulf input.
 - **Revisit if:** MARBERT or AraBERT publish a clear, compatible licence.
+
+## D-028 · Phase 4 · Pretraining setup and the pilot
+
+- **Decision:** `configs/pretrain/full.yaml` (`scripts/pretrain.py`):
+  - **Data:** one pass over the train shards. That is 5,675 optimizer steps of 262,144 tokens:
+    micro-batch 16 × 1,024 tokens, with 16 accumulation steps.
+  - **Optimizer:** AdamW (β 0.9/0.95), with weight decay 0.1 on matrices and embeddings only.
+  - **Schedule:** 200 warmup steps, then cosine decay from peak LR **2e-3** to 2e-4. Gradients
+    are clipped at 1.0.
+  - **Precision and speed:** bf16 autocast and `torch.compile`.
+  - **Evaluation:** validation loss on a fixed 655k-token set every 250 steps.
+  - **Checkpoints:** every 250 steps (about every 13 minutes), with automatic resume.
+- **Data order:** the windows are laid end to end so that every token is a target exactly once,
+  and then shuffled with the run seed. Random windows drawn with replacement would cover only
+  ~63% of the corpus in one pass. Because the order depends only on the step, a resumed run sees
+  exactly the data it would have seen.
+- **torch.compile:** it needs `triton-windows` (3.8.0.post28, MIT, Windows only). It raises the
+  speed from 45k to 86k tokens/s (MFU 31% to 59%) for the 62M model. On the same weights, the
+  compiled and eager losses agree to 3e-5, and their top predictions agree 100%. The full run
+  takes about 4.8 h instead of 9 h.
+- **Pilot** ([results/phase4_pilot.md](results/phase4_pilot.md)). The brief asks for ~1% of the
+  budget first. There were three pilots of 56 steps each (14.7M tokens), using the full run's
+  settings with the schedule compressed. The rule was fixed before the runs (`88cd64c`): among
+  learning rates whose train loss never rises by more than 0.5 after warmup, take the lowest one
+  whose final validation loss is within 0.02 of the best.
+
+  | Peak LR | Final val loss | Largest loss rise after warmup | Max grad norm |
+  |---|---:|---:|---:|
+  | 5e-4 | 7.668 | +0.035 | 1.85 |
+  | 1e-3 | 7.671 | +0.035 | 6.84 |
+  | 2e-3 | **7.600** | +0.032 | 10.36 |
+
+  2e-3 is chosen: it is best by 0.07, and every candidate is stable.
+- **Resume check:** a 1e-3 pilot was stopped at step 24 and resumed from its checkpoint. Its
+  train loss stayed within 0.015 of the uninterrupted run. On the CPU the unit test is
+  bit-identical; GPU kernels are not.
+- **Caveat:** short pilots favour higher learning rates, and the full run is 100× longer. 2e-3
+  had one grad-norm peak of 10.4 early in warmup, which was clipped. The first 500 steps of the
+  full run are the thing to watch. If the loss spikes there, fall back to 1e-3, which was only
+  0.07 worse in the pilot.
+- **Alternatives:** 1e-3 (safer, slightly slower learning in the pilot); a warmup-stable-decay
+  schedule, which makes continued training easier but is less standard for a single pass.

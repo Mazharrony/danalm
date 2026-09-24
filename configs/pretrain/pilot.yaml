@@ -7,6 +7,8 @@ run_name: pretrain-pilot
 
 train:
   total_tokens: 14880000       # ~1% of the 1,487.9M train tokens: 56 steps
+  lr: 1.0e-3                   # the pilots' baseline; the other two override it (pilot_report.yaml)
+  min_lr: 1.0e-4
   warmup_steps: 6
   log_every: 2
   eval_every: 8

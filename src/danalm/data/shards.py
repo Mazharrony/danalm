@@ -143,3 +143,20 @@ def verify_split(
     }
     result["ok"] = docs == len(ends) and max_id < result["vocab"] and not mismatched
     return result
+
+
+def sample_windows(
+    shards: list[np.ndarray], batch_size: int, seq_len: int, rng: np.random.Generator
+) -> np.ndarray:
+    """(batch_size, seq_len + 1) random token windows, int64: inputs are [:, :-1] and next-token
+    targets [:, 1:]. A window never spans two shards; a shard is picked with probability
+    proportional to its number of possible start positions. Seeding `rng` from (seed, step)
+    makes the data order reproducible and resumable."""
+    starts_per_shard = np.array([len(s) - seq_len for s in shards], dtype=np.int64)
+    if (starts_per_shard <= 0).any():
+        raise ValueError(f"every shard must be longer than seq_len + 1 = {seq_len + 1} tokens")
+    which = rng.choice(len(shards), size=batch_size, p=starts_per_shard / starts_per_shard.sum())
+    starts = rng.integers(0, starts_per_shard[which])
+    return np.stack(
+        [np.asarray(shards[w][s : s + seq_len + 1], dtype=np.int64) for w, s in zip(which, starts, strict=True)]  # fmt: skip
+    )

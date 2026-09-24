@@ -1,0 +1,18 @@
+# Shared model settings (Phase 3, D-026); the sizes are in small / medium / large.yaml.
+#   uv run python scripts/model_sanity.py --config configs/model/<size>.yaml
+# The teacher config is included for its host/port: GPU jobs refuse to run while it is up.
+base: [../base.yaml, ../teacher/qwen35.yaml]
+
+model:
+  vocab_size: 16384            # danalm-v1
+  max_seq_len: 1024
+  rope_theta: 10000.0
+  norm_eps: 1.0e-5
+  init_std: 0.02               # linear layers; embed_init_std = 1 / d_model is set per size
+
+sanity:  # scripts/model_sanity.py: the brief's checks before any long run
+  tokens_dir: ${paths.data_dir}/pretrain_tokens
+  init_loss_batches: 8         # validation batches for the initial loss (compared with ln(vocab))
+  overfit: {batch_size: 4, seq_len: 256, steps: 300, lr: 1.0e-3, target_loss: 0.5}
+  speed: {batch_size: 16, seq_len: 1024, warmup_steps: 5, steps: 20, lr: 3.0e-4}
+  peak_tflops: 61.0            # measured bf16 matmul peak of the RTX 4070 (Phase 0), for MFU

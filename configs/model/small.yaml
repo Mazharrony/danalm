@@ -1,0 +1,4 @@
+# ~25M parameters (Phase 3 candidate).
+base: common.yaml
+run_name: model-small
+model: {d_model: 384, n_layers: 12, n_heads: 6, n_kv_heads: 2, ffn_hidden: 1024, embed_init_std: 0.0026}

@@ -18,7 +18,13 @@ from danalm.data.pipeline import (
     read_inputs,
     run_pipeline,
 )
-from danalm.data.shards import ShardWriter, read_shard, tokenize_split, verify_split
+from danalm.data.shards import (
+    ShardWriter,
+    read_shard,
+    sample_windows,
+    tokenize_split,
+    verify_split,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURES = REPO / "tests" / "fixtures" / "raw"
@@ -284,3 +290,15 @@ def test_verify_split_passes_on_good_shards_and_catches_a_corrupted_token(cfg, t
     ids.tofile(files[0])
     bad = verify_split(files, jsonl, tok, eos_id, sample_docs=10_000, seed=0)
     assert not bad["ok"] and bad["mismatched_docs"] == [0]
+
+
+def test_sample_windows_are_contiguous_slices_and_seeded():
+    shards = [np.arange(0, 100, dtype=np.uint16), np.arange(1000, 1030, dtype=np.uint16)]
+    batch = sample_windows(shards, batch_size=64, seq_len=8, rng=np.random.default_rng(0))
+    assert batch.shape == (64, 9) and batch.dtype == np.int64
+    assert (np.diff(batch, axis=1) == 1).all()  # contiguous: never spans two shards
+    again = sample_windows(shards, batch_size=64, seq_len=8, rng=np.random.default_rng(0))
+    assert (batch == again).all()
+    assert (batch[:, 0] >= 1000).any() and (batch[:, 0] < 1000).any()  # both shards used
+    with pytest.raises(ValueError):
+        sample_windows(shards, batch_size=1, seq_len=30, rng=np.random.default_rng(0))

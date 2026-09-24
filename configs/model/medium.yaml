@@ -1,0 +1,4 @@
+# ~42M parameters (Phase 3 candidate).
+base: common.yaml
+run_name: model-medium
+model: {d_model: 512, n_layers: 12, n_heads: 8, n_kv_heads: 2, ffn_hidden: 1408, embed_init_std: 0.00195}

@@ -556,6 +556,24 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 - **Note:** MASSIVE ar-SA turned out to be colloquial Saudi Arabic ("غير لون اللمبات... وخلها
   حمرا"), not MSA, so its variety is `saudi_arabic`.
 - **Alternatives:** teacher-only top-up (less varied); keep `other` as it was.
+- **Result (2026-09-24; [results/phase2_data.md](results/phase2_data.md)):**
+  - **Top-ups:** 491 of the 500 real messages got a reply that passed the checks. The code-mixed
+    top-up kept 96 of 320 examples; the teacher still wrote pure Arabic 176 times.
+  - **Merge:** 21,108 candidates.
+  - **Judge:** one pass agreed with 18,547 (87.9%), against 87.3% in the first version. By
+    variety: English 92.7%, Gulf Arabic 91.9%, Saudi 98.2%, mixed 82.7%, Arabizi 81.6%.
+  - **`other`:** agreement rose from 51.9% to 68.7%. Most of the 227 remaining
+    `other → handoff_to_human` rows are first-run teacher messages that do ask for a person, so
+    dropping them fixes the labels. The final set has 1,004 `other` examples (was 469), 60 of
+    them code-mixed (was 13).
+  - **Final set:** 18,547 examples (train 17,579, val 968), 1.12M danalm-v1 tokens. Every intent
+    has 760–1,010 examples. The smallest intent × variety cell is failed_delivery × Arabizi
+    (46).
+- **Still open:**
+  - `failed_delivery` ↔ `order_status` stays the main disagreement (379 rows, all dropped).
+  - The judge checks labels only, so reply quality is unverified. For example, the Saudi
+    message "ضم هذا" ("add this") got a greeting reply. A native speaker's review is still
+    needed.
 
 ## D-025 · Phase 2 · English part of the human test set from public test splits
 

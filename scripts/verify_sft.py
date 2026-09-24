@@ -45,23 +45,20 @@ def main() -> None:
             with open(path, encoding="utf-8") as fh:
                 rows = [json.loads(line) for line in fh]
             batches = [rows[i : i + v["batch"]] for i in range(0, len(rows), v["batch"])]
-            keys = [
-                hashlib.md5("\n".join(r["message"] for r in b).encode("utf-8")).hexdigest()
-                for b in batches
-            ]
+            # the key covers the whole prompt, intent descriptions included, so answers judged
+            # with an older taxonomy text are never reused
+            prompts = [build_prompt(intents, [r["message"] for r in b]) for b in batches]
+            keys = [hashlib.md5(p.encode("utf-8")).hexdigest() for p in prompts]
             log = AnswerLog(path.with_name("judge_answers.jsonl"), keys)
             if log.done:
                 print(
                     f"resuming: {len(log.done)}/{len(batches)} batches already judged", flush=True
                 )
 
-            def judge(batch: list[dict]) -> str | None:
+            def judge(prompt: str) -> str | None:
                 messages = [
                     {"role": "system", "content": v["system"]},
-                    {
-                        "role": "user",
-                        "content": build_prompt(intents, [r["message"] for r in batch]),
-                    },
+                    {"role": "user", "content": prompt},
                 ]
                 try:
                     answer, _ = chat_with_retries(
@@ -78,7 +75,7 @@ def main() -> None:
             todo = [i for i in range(len(batches)) if i not in log.done]
             with ThreadPoolExecutor(t["parallel"]) as pool:
                 try:
-                    judged = pool.map(judge, [batches[i] for i in todo])
+                    judged = pool.map(judge, [prompts[i] for i in todo])
                     for n, (i, answer) in enumerate(zip(todo, judged, strict=True), start=1):
                         if answer is None:  # not saved, so a re-run asks again
                             failed += 1

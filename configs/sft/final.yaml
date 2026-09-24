@@ -1,0 +1,29 @@
+# The final SFT set (Phase 2b, second version): the full run's examples, the Arabizi messages with
+# new Gulf Arabic replies (D-023) and the `other` top-ups (D-024), judged together in one pass with
+# the final intent descriptions (D-021 update), then split into train/val.
+#   uv run python scripts/merge_sft.py         --config configs/sft/final.yaml
+#   uv run python scripts/verify_sft.py        --config configs/sft/final.yaml
+#   uv run python scripts/build_sft_dataset.py --config configs/sft/final.yaml
+base: full.yaml
+run_name: sft-final
+
+merge:
+  sources:
+    - {path: "${paths.data_dir}/sft/sft-full/generated.jsonl", exclude_varieties: [arabizi]}
+    - {path: "${paths.data_dir}/sft/sft-arabizi-replies/generated.jsonl", exclude_varieties: []}
+    - {path: "${paths.data_dir}/sft/sft-other-real/generated.jsonl", exclude_varieties: []}
+    - {path: "${paths.data_dir}/sft/sft-other-mixed/generated.jsonl", exclude_varieties: []}
+  keep_langs: {gulf_arabic: [ar], english: [en], arabizi: [arabizi], mixed: [mixed],
+               saudi_arabic: [ar]}  # fmt: skip
+  out: ${paths.data_dir}/sft/final-candidates/candidates.jsonl
+
+verify:
+  inputs: ["${merge.out}"]
+
+build:
+  inputs: ["${paths.data_dir}/sft/final-candidates/verified.jsonl"]
+  out_dir: ${paths.data_dir}/sft/final
+  val_frac: 0.05
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  tokenizer_name: danalm-v1
+  used_for: supervised fine-tuning (Phase 5)

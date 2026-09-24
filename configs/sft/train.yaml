@@ -1,0 +1,39 @@
+# Phase 5 SFT (D-029, D-031): the pretrained model learns to answer {"intent": ..., "reply": ...}.
+# The sweep is peak LR 1e-4, 3e-4 and 1e-3, each for 5 epochs with an evaluation after every
+# epoch; configs/sft/report.yaml lists the runs and applies the selection rule:
+#   uv run python scripts/sft.py --config configs/sft/train.yaml train.lr=1.0e-4 run_name=sft-r1-lr1e-4
+base: ../model/large.yaml    # for the paths and the teacher host/port check; the model comes from train.init
+run_name: sft-lr3e-4
+
+sft_data:
+  data_dir: ${paths.data_dir}/sft/final-v3      # D-031 (cleaned replies and top-up)
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  special: {user: "<|user|>", assistant: "<|assistant|>", eos: "<|endoftext|>", pad: "<|pad|>"}
+  normalize: {strip_diacritics: true, unify_alef: false}   # as the SFT data (configs/sft/generate.yaml)
+  intents_file: configs/sft/intents.yaml
+  reply_langs:                 # allowed reply languages per message variety (generate.yaml, D-023)
+    gulf_arabic: [ar]
+    english: [en]
+    arabizi: [ar]
+    mixed: [ar, mixed]
+    saudi_arabic: [ar]
+
+train:
+  init: ${paths.artifacts_dir}/checkpoints/pretrain-full/model.pt
+  out_dir: ${paths.artifacts_dir}/checkpoints/${run_name}
+  lr: 3.0e-4
+  min_lr_ratio: 0.1            # cosine decay to 10% of the peak (D-029)
+  warmup_ratio: 0.03
+  epochs: 5
+  batch_size: 64               # examples per optimizer step
+  bucket_chunks: 50            # batches per length-sorted chunk: little padding, still shuffled
+  betas: [0.9, 0.95]
+  weight_decay: 0.1
+  grad_clip: 1.0
+  log_every: 20
+
+eval:
+  max_new_tokens: 96           # the longest training answer is 69 tokens with the end token
+  gen_batch: 64
+  score_batch: 8               # examples per likelihood batch (x 21 intents)
+  target_accuracy: 0.95        # D-030 coverage

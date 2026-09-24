@@ -1,0 +1,92 @@
+# D-031 B: top-up and contrast examples, generated overnight 2026-09-24.
+# Cells (intent/variety, not saudi_arabic) with fewer than 200 examples in data/sft/final get
+# ceil((250 - n) / kept_per_request) requests, with kept examples per request from the full run
+# (english 7, gulf_arabic 6, arabizi 4.5, mixed 2). The intents that get confused get at least 6
+# requests per variety, and their prompts add a rule that makes the message clearly that intent
+# (message_rules). New examples go to the training split only (scripts/assemble_sft_v3.py).
+#   uv run python scripts/generate_sft.py --config configs/sft/topup.yaml
+#   uv run python scripts/verify_sft.py   --config configs/sft/topup.yaml
+base: full.yaml
+run_name: sft-topup
+seed: 2031                     # a new seed, so personas, tones and sampling seeds are fresh
+
+sft:
+  cell_requests:               # requests per cell; "# has n" = examples in data/sft/final
+    card_not_working/english: 6   # has 266
+    card_not_working/gulf_arabic: 6   # has 262
+    card_not_working/arabizi: 6   # has 225
+    card_not_working/mixed: 44   # has 162
+    lost_or_stolen_card/english: 6   # has 278
+    lost_or_stolen_card/gulf_arabic: 6   # has 258
+    lost_or_stolen_card/arabizi: 24   # has 142
+    lost_or_stolen_card/mixed: 75   # has 101
+    balance_or_statement/mixed: 27   # has 197
+    transfer_issue/english: 6   # has 253
+    transfer_issue/gulf_arabic: 6   # has 241
+    transfer_issue/arabizi: 20   # has 164
+    transfer_issue/mixed: 6   # has 200
+    unrecognized_transaction/english: 6   # has 274
+    unrecognized_transaction/gulf_arabic: 6   # has 259
+    unrecognized_transaction/arabizi: 6   # has 255
+    unrecognized_transaction/mixed: 88   # has 74
+    loans_and_credit/mixed: 48   # has 155
+    bill_inquiry/mixed: 70   # has 110
+    network_or_internet_issue/mixed: 84   # has 82
+    plan_change/mixed: 91   # has 68
+    sim_or_number/mixed: 58   # has 134
+    roaming/mixed: 32   # has 187
+    order_status/english: 6   # has 213
+    order_status/gulf_arabic: 6   # has 259
+    order_status/arabizi: 6   # has 265
+    order_status/mixed: 76   # has 99
+    missing_or_wrong_item/arabizi: 25   # has 140
+    missing_or_wrong_item/mixed: 34   # has 182
+    cancel_order/english: 6   # has 271
+    cancel_order/gulf_arabic: 6   # has 244
+    cancel_order/arabizi: 31   # has 112
+    cancel_order/mixed: 59   # has 133
+    refund_request/english: 6   # has 255
+    refund_request/gulf_arabic: 6   # has 238
+    refund_request/arabizi: 6   # has 260
+    refund_request/mixed: 80   # has 90
+    change_delivery_details/mixed: 81   # has 89
+    failed_delivery/english: 6   # has 254
+    failed_delivery/gulf_arabic: 10   # has 190
+    failed_delivery/arabizi: 46   # has 46
+    failed_delivery/mixed: 6   # has 276
+    account_access/arabizi: 22   # has 152
+    account_access/mixed: 30   # has 190
+    handoff_to_human/english: 6   # has 269
+    handoff_to_human/gulf_arabic: 6   # has 260
+    handoff_to_human/arabizi: 6   # has 263
+    handoff_to_human/mixed: 85   # has 81
+    other/english: 6   # has 337
+    other/gulf_arabic: 10   # has 192
+    other/arabizi: 6   # has 201
+    other/mixed: 95   # has 60
+  message_rules:               # restate the intent definitions (configs/sft/intents.yaml); no new labels
+    order_status: " The order is still on its way: the customer asks where it is, wants to track it, or says it is late. Nothing says it was delivered, that a delivery attempt failed, or that they want to cancel or get a refund."
+    failed_delivery: " Make it clear that a delivery attempt already failed (the courier could not find the address or reach the customer), the parcel was sent back, or the app shows delivered but nothing arrived. Not only late."
+    cancel_order: " The customer clearly asks to cancel the order, even if they also complain that it is late."
+    refund_request: " The customer clearly asks for their money back or for compensation."
+    card_not_working: " The card is declined, blocked or not working at an ATM or shop, or a new card has not arrived. It is not lost or stolen."
+    lost_or_stolen_card: " The card was lost or stolen, and the customer wants it blocked or replaced."
+    transfer_issue: " It is about the customer's own money transfer or payment that failed, is pending or delayed, or was not received."
+    unrecognized_transaction: " It is about a charge or transaction the customer does not recognise, suspects is fraud, or wants to dispute."
+    handoff_to_human: " The customer asks for a human agent or a manager, or wants to file a formal complaint."
+    other: " A greeting, thanks, small talk, or a question outside banking, telecom and delivery (for example exchange rates or opening a new account). The customer does not ask for a person."
+  prompt: >-
+    Write {n} different examples. Each has a customer message with the intent "{intent}"
+    ({domain}: {description}) and the assistant's reply.{message_rule}
+    Customer: {persona}, tone: {tone}. {style}
+    Vary the wording, the details and the length (3 to 30 words per message). Do not use real
+    company or brand names.
+    Reply rules: {reply_style} One or two short, polite sentences. Never invent facts (balances,
+    amounts, dates, names, policies). Never ask for card numbers, PINs, passwords, OTPs or CVV.
+    The assistant cannot see the account or do anything itself, so never say something has been
+    done (blocked, frozen, refunded, sent, changed); say what the customer should do next or
+    that the request will be passed to the team.{intent_rule}
+    Output exactly {n} lines, each one JSON object: {{"message": "...", "reply": "..."}}.
+
+verify:
+  inputs: ["${sft.out_dir}/generated.jsonl"]

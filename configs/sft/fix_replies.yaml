@@ -1,0 +1,22 @@
+# D-031 A: new replies for the messages whose reply the full check marked BROKEN
+# (data/sft/reply-check-all/broken.jsonl, from scripts/check_replies.py check.scope=all).
+#   uv run python scripts/write_replies.py --config configs/sft/fix_replies.yaml
+# Then judge the new replies once more:
+#   uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml check.scope=all check.data_dir=data/sft/sft-fix-replies "check.splits=[generated]" check.out_dir=data/sft/reply-check-fix
+base: full.yaml
+run_name: sft-fix-replies
+
+replies:
+  inputs: ["${paths.data_dir}/sft/reply-check-all/broken.jsonl"]
+  varieties:  # the reply rules of each variety (generate.yaml, D-023 for Arabizi, D-024 for Saudi)
+    gulf_arabic: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+    english: {reply_style: "${sft.reply_styles.english}", reply_langs: [en], gulf_filter: false}
+    arabizi: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+    mixed: {reply_style: "${sft.reply_styles.mixed}", reply_langs: [ar, mixed], gulf_filter: true}
+    saudi_arabic: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+  batch: 10
+  max_rows: null
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  params: ${sft.params}
+  system: ${sft.system}
+  prompt: ${sft.reply_prompt}

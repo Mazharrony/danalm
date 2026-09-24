@@ -8,7 +8,8 @@ run_name: sft-reply-check
 check:
   data_dir: ${paths.data_dir}/sft/final
   out_dir: ${paths.data_dir}/sft/reply-check-${check.scope}   # scope=all also writes the filtered splits here
-  scope: sample                # sample: a stratified sample of train; all: every reply of both splits
+  scope: sample                # sample: a stratified sample of train; all: every reply of `splits`
+  splits: [train, val]         # <data_dir>/<name>.jsonl files; sample mode draws from train
   sample_per_variety: 125
   varieties: [gulf_arabic, english, arabizi, mixed]
   threshold: 0.03              # D-029: above this estimated broken share, judge all replies and filter

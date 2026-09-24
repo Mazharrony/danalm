@@ -37,8 +37,11 @@ from danalm.utils.seed import set_seed
 
 def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[dict[str, Any]]:
     """One request per (intent, variety, repeat), with a seeded persona, tone and sampling seed.
-    `only_intents` / `only_varieties` (lists or null) restrict the plan, e.g. for a top-up run."""
+    `only_intents` / `only_varieties` (lists or null) restrict the plan, e.g. for a top-up run.
+    `cell_requests` ({"intent/variety": n}, optional) sets the number of requests per cell
+    instead; cells it does not list get none (D-031 top-up)."""
     rng = random.Random(seed)
+    cells = sft.get("cell_requests")
     specs = []
     for intent in intents:
         if sft["only_intents"] and intent["name"] not in sft["only_intents"]:
@@ -47,7 +50,10 @@ def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[d
             if sft["only_varieties"] and variety not in sft["only_varieties"]:
                 continue
             # a variety may ask for more requests when its yield is low (e.g. mixed)
-            for _ in range(v.get("requests_per_cell", sft["requests_per_cell"])):
+            n = v.get("requests_per_cell", sft["requests_per_cell"])
+            if cells is not None:
+                n = cells.get(f"{intent['name']}/{variety}", 0)
+            for _ in range(n):
                 specs.append(
                     {
                         **intent,
@@ -73,6 +79,8 @@ def build_prompt(spec: dict[str, Any], sft: dict[str, Any]) -> str:
         style=v["style"].strip(),
         reply_style=v["reply_style"],
         intent_rule=sft["intent_rules"].get(spec["intent"], ""),
+        # optional: makes the message clearly this intent (D-031); unused by older prompts
+        message_rule=(sft.get("message_rules") or {}).get(spec["intent"], ""),
     )
 
 

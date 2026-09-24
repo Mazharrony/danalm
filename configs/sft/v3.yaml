@@ -1,0 +1,19 @@
+# D-031: the SFT data for the overnight run, data/sft/final-v3 (see scripts/assemble_sft_v3.py).
+# Inputs, in order: the full reply check, the rewrites of broken replies and their check, the
+# top-up run (judged) and the check of its replies.
+#   uv run python scripts/assemble_sft_v3.py --config configs/sft/v3.yaml
+base: ../base.yaml
+run_name: sft-v3
+
+assemble:
+  original_dir: ${paths.data_dir}/sft/final
+  judged_all: ${paths.data_dir}/sft/reply-check-all/judged.jsonl
+  rewrites: ${paths.data_dir}/sft/sft-fix-replies/generated.jsonl
+  rewrites_judged: ${paths.data_dir}/sft/reply-check-fix/judged.jsonl
+  topup: ${paths.data_dir}/sft/sft-topup/verified.jsonl
+  topup_judged: ${paths.data_dir}/sft/reply-check-topup/judged.jsonl
+  out_dir: ${paths.data_dir}/sft/final-v3
+  normalize: {strip_diacritics: true, unify_alef: false}   # as in configs/sft/generate.yaml
+  near_dup_threshold: 0.8      # MinHash Jaccard, as for the generated messages
+  minhash_num_perm: 64
+  shingle_words: 2

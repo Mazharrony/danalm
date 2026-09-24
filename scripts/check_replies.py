@@ -4,10 +4,12 @@ Usage: uv run python scripts/check_replies.py --config configs/sft/reply_check.y
 With check.scope=sample, the teacher judges check.sample_per_variety training replies per
 variety (seeded) as OK or BROKEN, plus the canary replies, which are judged on their own and never
 counted. The broken share of the whole training set is estimated from the sample, with each variety
-weighted by its share of the set. With check.scope=all, every reply of both splits is judged, and
-copies of the splits without the BROKEN rows are written to check.out_dir.
+weighted by its share of the set. With check.scope=all, every reply of the files in check.splits
+is judged; copies of those files without the BROKEN rows, and broken.jsonl (the BROKEN rows with
+their split, index and reason, the input for rewriting them), are written to check.out_dir.
 Writes judged.jsonl (every reply with its verdict and reason) and summary.json to check.out_dir.
-Answers are saved as they arrive (answers.jsonl), so running the same config again resumes.
+Answers are saved as they arrive (answers.jsonl), so running the same config again resumes, and
+a finished run re-writes its outputs without starting the teacher.
 """
 
 import hashlib
@@ -58,13 +60,59 @@ def pick_items(c: dict[str, Any], splits: dict[str, list[dict]], seed: int) -> l
     return items
 
 
+def judge_batches(
+    prompts: list[str], keys: list[str], log: AnswerLog, c: dict[str, Any], t: dict[str, Any],
+    log_dir: Path,
+) -> int:  # fmt: skip
+    """Ask the teacher for every prompt not yet in the answer log; returns the failed requests.
+    The teacher server is started only when there is something to ask."""
+    todo = [i for i in range(len(prompts)) if i not in log.done]
+    failed = 0
+    if not todo:
+        return failed
+    with TeacherServer(t, log_dir / "llama-server.log") as server:
+
+        def judge(prompt: str) -> str | None:
+            messages = [
+                {"role": "system", "content": c["system"]},
+                {"role": "user", "content": prompt},
+            ]
+            try:
+                answer, _ = chat_with_retries(
+                    server.base_url, messages, c["params"], t["request_timeout_s"],
+                    t["max_retries"], t["retry_backoff_s"],
+                )  # fmt: skip
+            except TEACHER_ERRORS as err:
+                print(f"[teacher] a request failed: {err!r}", flush=True)
+                return None
+            return answer
+
+        with ThreadPoolExecutor(t["parallel"]) as pool:
+            try:
+                for n, (i, answer) in enumerate(
+                    zip(todo, pool.map(judge, [prompts[i] for i in todo]), strict=True), start=1
+                ):
+                    if answer is None:  # not saved, so a re-run asks again
+                        failed += 1
+                        if failed > t["max_failed_requests"]:
+                            raise RuntimeError(f"{failed} failed requests; re-run to resume")
+                        continue
+                    log.add(i, keys[i], answer=answer)
+                    if n % 50 == 0 or n == len(todo):
+                        print(f"{len(log.done)}/{len(prompts)} requests judged", flush=True)
+            except BaseException:
+                pool.shutdown(wait=False, cancel_futures=True)
+                raise
+    return failed
+
+
 def main() -> None:
     cfg = config_from_cli(__doc__)
     c, t = cfg["check"], cfg["teacher"]
     run = start_run(cfg, job_type="sft-reply-check")
     data_dir, out_dir = Path(c["data_dir"]), Path(c["out_dir"])
     out_dir.mkdir(parents=True, exist_ok=True)
-    splits = {s: read_jsonl(data_dir / f"{s}.jsonl") for s in ("train", "val")}
+    splits = {s: read_jsonl(data_dir / f"{s}.jsonl") for s in c["splits"]}
     items = pick_items(c, splits, cfg["seed"])
 
     # one variety per request, so each prompt names one expected language
@@ -84,44 +132,11 @@ def main() -> None:
         f"{len(items)} replies in {len(batches)} requests; {len(log.done)} already judged",
         flush=True,
     )
-
-    start, failed = time.time(), 0
-    with TeacherServer(t, run.dir / "llama-server.log") as server:
-
-        def judge(prompt: str) -> str | None:
-            messages = [
-                {"role": "system", "content": c["system"]},
-                {"role": "user", "content": prompt},
-            ]
-            try:
-                answer, _ = chat_with_retries(
-                    server.base_url, messages, c["params"], t["request_timeout_s"],
-                    t["max_retries"], t["retry_backoff_s"],
-                )  # fmt: skip
-            except TEACHER_ERRORS as err:
-                print(f"[teacher] a request failed: {err!r}", flush=True)
-                return None
-            return answer
-
-        todo = [i for i in range(len(batches)) if i not in log.done]
-        with ThreadPoolExecutor(t["parallel"]) as pool:
-            try:
-                for n, (i, answer) in enumerate(
-                    zip(todo, pool.map(judge, [prompts[i] for i in todo]), strict=True), start=1
-                ):
-                    if answer is None:  # not saved, so a re-run asks again
-                        failed += 1
-                        if failed > t["max_failed_requests"]:
-                            raise RuntimeError(f"{failed} failed requests; re-run to resume")
-                        continue
-                    log.add(i, keys[i], answer=answer)
-                    if n % 50 == 0 or n == len(todo):
-                        print(f"{len(log.done)}/{len(batches)} requests judged", flush=True)
-            except BaseException:
-                pool.shutdown(wait=False, cancel_futures=True)
-                raise
-            finally:
-                log.close()
+    start = time.time()
+    try:
+        failed = judge_batches(prompts, keys, log, c, t, run.dir)
+    finally:
+        log.close()
 
     judged = []
     for i, (_, b) in enumerate(batches):
@@ -138,14 +153,16 @@ def main() -> None:
         cnt["replies"] += 1
         cnt["judged"] += j["verdict"] is not None
         cnt["broken"] += j["verdict"] == "BROKEN"
-    train_share = Counter(r["variety"] for r in splits["train"])
-    share = {v: n / len(splits["train"]) for v, n in train_share.items()}
+    # variety shares of the training split, or of everything checked when there is no such split
+    base = splits.get("train") or [r for rows in splits.values() for r in rows]
+    share = {v: n / len(base) for v, n in Counter(r["variety"] for r in base).items()}
     estimate = weighted_rate({v: x["broken"] for v, x in per.items()},
                              {v: x["judged"] for v, x in per.items()}, share)  # fmt: skip
     summary: dict[str, Any] = {
-        "judge": t["model_name"], "scope": c["scope"], "threshold": c["threshold"],
+        "judge": t["model_name"], "scope": c["scope"], "splits": list(splits),
+        "threshold": c["threshold"],
         "per_variety": {v: {**x, "rate": x["broken"] / max(1, x["judged"])} for v, x in per.items()},
-        "estimated_broken_share_of_train": estimate,
+        "estimated_broken_share": estimate,
         "canaries": [{"reply": j["reply"], "verdict": j["verdict"], "reason": j["reason"]}
                      for j in judged if not j["counted"]],
         "failed_requests": failed, "seconds": round(time.time() - start, 1),
@@ -154,12 +171,16 @@ def main() -> None:
         summary["decision"] = ("judge all replies and drop the broken ones" if estimate > c["threshold"]
                                else "use the data as it is")  # fmt: skip
     else:
-        broken = {(j["split"], j["index"]) for j in counted if j["verdict"] == "BROKEN"}
+        verdict = {(j["split"], j["index"]): j for j in counted}
+        broken = []
         for s, rows in splits.items():
-            kept = [r for i, r in enumerate(rows) if (s, i) not in broken]
-            write_jsonl(out_dir / f"{s}.jsonl", kept)
-            summary[f"{s}_kept"] = len(kept)
-            summary[f"{s}_dropped"] = len(rows) - len(kept)
+            ok = [r for i, r in enumerate(rows) if verdict[(s, i)]["verdict"] != "BROKEN"]
+            broken += [{**r, "split": s, "index": i, "broken_reason": verdict[(s, i)]["reason"]}
+                       for i, r in enumerate(rows) if verdict[(s, i)]["verdict"] == "BROKEN"]  # fmt: skip
+            write_jsonl(out_dir / f"{s}.jsonl", ok)
+            summary[f"{s}_kept"] = len(ok)
+            summary[f"{s}_broken"] = len(rows) - len(ok)
+        write_jsonl(out_dir / "broken.jsonl", broken)  # the input for rewriting (D-031 A)
     text = json.dumps(summary, ensure_ascii=False, indent=2)
     (out_dir / "summary.json").write_text(text + "\n", encoding="utf-8", newline="\n")
     print(text)

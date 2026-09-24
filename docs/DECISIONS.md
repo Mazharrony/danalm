@@ -28,6 +28,11 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 | D-020 | 2 | Streaming data pipeline (hash-based val split) and uint16 token shards; constant memory at any corpus size |
 | D-021 | 2 | Intent taxonomy: 21 intents (banking 7, telecom 5, delivery 6, cross-domain 3 incl. `other` and `handoff_to_human`) |
 | D-022 | 2 | SFT teacher and judge: Qwen3.5-35B-A3B (won the pre-declared pilot rule); stricter reply and dialect filters |
+| D-023 | 2 | Arabizi messages get Gulf Arabic replies in Arabic script (a change to the brief's "same language" rule) |
+| D-024 | 2 | `other`: real out-of-scope messages plus a code-mixed top-up; one final judge pass with the final intent descriptions |
+| D-025 | 2 | English part of the human test set: Banking77 and CLINC150 test splits, rule-mapped, overlap-checked, checked by a person |
+| D-026 | 3 | Model: Llama-style decoder, 62.1M parameters (large), chosen by a rule fixed before the sanity runs |
+| D-027 | 6 | Baseline classifier: CAMeLBERT-mix (Apache-2.0) instead of MARBERT/AraBERT |
 
 ---
 
@@ -307,6 +312,9 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   tokenizer. The Arabizi and Emirati eval sets are teacher-generated and unverified.
 - **Revisit if:** Phase 2 produces a substantial Arabizi corpus. Retraining takes about 45 s,
   and the tokenizer must be frozen before pretraining (Phase 4).
+- **Update (2026-09-24, approved by the owner):** no tokenizer v2. Phase 2 did produce about 6k
+  Arabizi messages, but they are teacher-written and noisy (D-022), so training a tokenizer on
+  them would fit the teacher's quirks, not real Arabizi. danalm-v1 is frozen for pretraining.
 
 ## D-018 · Phase 1 · Text written or edited by closed AI tools: evaluation only
 
@@ -408,6 +416,16 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   intents cover (exchange rates, opening an account) without a correct label. It now means
   "a greeting or thanks, or a request that no other intent covers". This matches the product
   logic: whatever the small model cannot handle is routed to a bigger model or a person.
+- **Update (2026-09-24, after the full run):** seven descriptions were sharpened where the full
+  run's judge confused intents:
+  - `other` lost "or a person", which overlapped `handoff_to_human` (225 confusions).
+  - `order_status` is now "while it is still on its way", and `failed_delivery` names the failed
+    attempt (385 confusions between them).
+  - `cancel_order` applies "even if they also complain that it is late" (126).
+  - `refund_request` applies "whatever the reason" (91 confused with `failed_delivery`).
+  - `plan_change` and `roaming` now say roaming packs are roaming (59).
+
+  Every SFT candidate is judged again with the new text (D-024).
 
 ## D-022 · Phase 2 · SFT teacher and judge: Qwen3.5-35B-A3B; stricter filters
 
@@ -492,3 +510,117 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   - **Arabizi replies:** 9.0% contain clear non-Gulf words (Moroccan "ghadi" 229 times, Egyptian
     "n3mel" 103 times), against 7.5% of Arabizi messages. Read by hand, most sampled replies are
     barely meaningful. The judge checks only the label, so it does not catch this.
+
+## D-023 · Phase 2 · Arabizi messages get Gulf Arabic replies in Arabic script
+
+- **Decision (approved by the owner, 2026-09-24):** the model keeps reading Arabizi, but it
+  answers Arabizi messages in Gulf Arabic, in Arabic script. The brief's rule "reply in the same
+  language" now reads: the same language, and Arabic script for Arabizi. English, Gulf Arabic
+  and mixed messages are unchanged.
+- **Why:**
+  - The teacher's Arabizi replies were poor: 9.0% had clear non-Gulf words (Moroccan "ghadi"
+    229 times, Egyptian "n3mel" 103 times), and most sampled replies were barely meaningful.
+  - The judge checks only the intent label, so it never caught this. A model trained on those
+    replies would answer Arabizi customers in garbled text.
+  - UAE service channels usually answer in Arabic script or English, and the teacher writes
+    good Gulf Arabic.
+- **How:** `scripts/write_replies.py` (`configs/sft/arabizi_replies.yaml`) asked the teacher for
+  new replies to all 6,080 Arabizi messages that passed the filters, 10 per request. It keeps the
+  messages and labels. 5,747 replies passed the usual checks. The 333 rejected were 266 that
+  claimed an action was done, 62 with no usable reply, and 5 with non-Gulf words. The run took
+  about 55 minutes of teacher time in two parts: the watchdog stopped it once (D-025), and it
+  resumed from its saved answers.
+- **Alternatives:**
+  - The teacher transliterates a good Gulf Arabic reply into Arabizi. This keeps the brief's
+    rule but is unproven.
+  - Keep the Arabizi replies (not acceptable, see above).
+- **Revisit if:** a native speaker finds Arabic-script replies to Arabizi customers unnatural,
+  or a teacher that writes good Arabizi becomes available.
+
+## D-024 · Phase 2 · `other`: real out-of-scope data, a code-mixed top-up, one final judge pass
+
+- **Decision (approved by the owner, 2026-09-24):**
+  - **Real messages:** add 500 real out-of-scope messages from the TRAIN splits of CLINC150
+    ("oos", 250 English) and MASSIVE ar-SA (250 Arabic, up to 5 per intent, food-ordering
+    `takeaway_*` intents skipped because they overlap delivery). The teacher writes the replies
+    (`configs/sft/other_real.yaml`).
+  - **Code-mixed top-up:** 40 extra teacher requests for code-mixed greetings, thanks and small
+    talk (`configs/sft/other_mixed.yaml`).
+  - **Single final judge pass:** merge all sources and judge them in one pass with the final
+    intent descriptions, then build the final set (`configs/sft/final.yaml`). The merge
+    re-applies the D-011 language tagger and drops cross-source duplicates.
+- **Why:** `other` had 51.9% judge agreement, 469 examples and only 13 code-mixed ones.
+  `other` is the model's safety valve: anything it cannot handle goes to a bigger model or a
+  person, so it must be learned well. Real out-of-scope questions are more varied than teacher
+  ones. One judge pass with one taxonomy text keeps the labels consistent.
+- **Note:** MASSIVE ar-SA turned out to be colloquial Saudi Arabic ("غير لون اللمبات... وخلها
+  حمرا"), not MSA, so its variety is `saudi_arabic`.
+- **Alternatives:** teacher-only top-up (less varied); keep `other` as it was.
+
+## D-025 · Phase 2 · English part of the human test set from public test splits
+
+- **Decision (approved by the owner, 2026-09-24):**
+  - **Sources:** English test-set candidates come from the TEST splits of Banking77 and
+    CLINC150 (`configs/data/test_candidates_en.yaml`).
+    - Banking77 is CC-BY-4.0, with the licence checked in the original PolyAI repository and
+      pinned to commit `57ec275d`. Its documentation does not say who wrote the queries.
+    - CLINC150 is CC-BY-3.0.
+  - **Mapping:** labels map to our intents only where the match is clear (24 Banking77 and 20
+    CLINC150 labels).
+  - **Filtering:** candidates that overlap training data are dropped.
+  - **Review:** a person checks every remaining candidate in a review sheet before
+    `import_review.py` adds it to `data/test/test_set.jsonl`.
+- **Result:** 160 candidates. The overlap check removed 48, mostly CLINC150 test sentences that
+  nearly repeat its train split, which is part of the pretraining corpus. 65 went into the review
+  sheet, up to 7 per intent. They cover 10 of the 21 intents: banking, `account_access`,
+  `order_status` and `other`. The telecom and most delivery intents have no public English test
+  data, so a person must write those.
+- **Incident:** the first overlap check loaded the whole 1.5B-token corpus into memory. Commit
+  headroom fell to 3.4 GB and the watchdog's first tier stopped the teacher (11:50), as designed.
+  No data was lost, because the teacher resumed from its saved answers. `check_overlap.py` now
+  streams its inputs and skips training texts longer than 4× the longest test text. With those
+  changes it compares 590k texts in about 7 minutes.
+
+## D-026 · Phase 3 · Model: Llama-style decoder, 62.1M parameters
+
+- **Decision:** `configs/model/large.yaml` (`src/danalm/model/transformer.py`).
+  - **Shape:** 12 layers, d_model 640, 10 query heads and 2 key/value heads (grouped-query
+    attention), SwiGLU hidden size 1728.
+  - **Components:** RMSNorm, RoPE (theta 10,000), no biases, tied embeddings, context 1,024.
+  - **Size:** 62.1M parameters, of which 51.6M are non-embedding.
+- **Evidence** (`scripts/model_sanity.py`, [results/phase3_model.md](results/phase3_model.md)).
+  The rule was fixed before the runs (`d11c84f`): take the largest size that passes both checks
+  and whose one pass over the 1.49B train tokens takes at most 12 h at the measured speed.
+
+  | | small | medium | large |
+  |---|---:|---:|---:|
+  | Parameters | 25.2M | 42.2M | 62.1M |
+  | Initial loss (ln 16,384 = 9.704) | 9.705 | 9.705 | 9.705 |
+  | One batch overfit (300 steps) | 9.71 → 0.020 | 9.71 → 0.007 | 9.71 → 0.005 |
+  | Speed, batch 16 × 1,024, bf16 | 90,208 tok/s | 62,917 tok/s | 46,157 tok/s |
+  | Peak VRAM | 7.5 GB | 9.0 GB | 10.5 GB |
+  | MFU (61 TFLOPS peak) | 26.5% | 30.0% | 31.8% |
+  | One pass over the train shards | 4.6 h | 6.6 h | 9.0 h |
+
+  All three pass, so the rule picks large. It is 2% above the brief's "~30–60M". 1.49B tokens
+  is 24 tokens per parameter, about compute-optimal. INT8 weights are about 62 MB, which is
+  still easy on a CPU or phone.
+- **Embedding init:** with tied embeddings, an untrained model repeats its input. The final
+  hidden state is close to the input token's own embedding, so that token's logit starts near
+  embed_init_std × d_model, about 13 for std 0.02 at d_model 640. That would put the initial
+  loss well above ln(vocab). Embeddings therefore start at std 1/d_model, and every initial loss
+  landed within 0.001 of ln(vocab). Linear layers use std 0.02, and the residual output
+  projections use std 0.02/√(2·layers).
+- **Alternatives:** medium (42.2M, 6.6 h) if the owner prefers a faster run or a smaller
+  on-device model; small (25.2M, 4.6 h) as a quick baseline.
+- **Revisit if:** the Phase 4 pilot's loss curve suggests a different size, or `torch.compile`
+  (triton-windows) raises the speed enough to change the time budget.
+
+## D-027 · Phase 6 · Baseline classifier: CAMeLBERT-mix
+
+- **Decision (approved by the owner, 2026-09-24):** the Phase 6 intent-classifier baseline is a
+  fine-tuned CAMeLBERT-mix (Apache-2.0) instead of MARBERT or AraBERT.
+- **Why:** MARBERT's and AraBERT's model cards state no licence, and the data policy (D-012)
+  allows only clearly licensed material. CAMeLBERT-mix was pretrained on MSA, dialectal and
+  classical Arabic, which fits Gulf input.
+- **Revisit if:** MARBERT or AraBERT publish a clear, compatible licence.

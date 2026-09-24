@@ -685,3 +685,25 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   0.07 worse in the pilot.
 - **Alternatives:** 1e-3 (safer, slightly slower learning in the pilot); a warmup-stable-decay
   schedule, which makes continued training easier but is less standard for a single pass.
+- **Result (full run, 2026-09-24, 14:24–19:13)**
+  ([results/phase4_pretrain.md](results/phase4_pretrain.md)):
+  - It ran in one attempt with no resume and no loss spike. The gradient norm settled around 0.15.
+  - The run covered 5,675 steps and 1.488B tokens in 4 h 49 min, at a median 87k tokens/s
+    (MFU ~0.60).
+  - Validation loss fell from 9.705 to **3.330** (perplexity 27.9). It was still falling slowly at
+    the end: 3.352, 3.341, 3.334 and 3.330 at steps 5,000, 5,250, 5,500 and 5,675.
+  - Per source, the loss is lowest on the Bitext customer-service text (0.8–1.5; templated, so
+    easy) and on Wikipedia (2.5 ar, 2.8 en). It is highest on Najdi web text (fineweb2-ars, 4.08).
+  - **Validation loss sits below train loss throughout; this is not overfitting or leakage.**
+    - Each train loss is measured before the model learns from that batch.
+    - The final model scores 3.398 on a random sample of train windows (seen early in the run)
+      and 3.330 on the validation windows, so the validation split is simply easier text.
+    - The validation split has less of the hardest source, fineweb2-ars (16.4% of its tokens vs
+      20.1% in train), and more fineweb-edu (35.5% vs 32.1%). Weighting the per-source losses by
+      each split's mix gives 3.352 vs 3.316, so the mix explains about 0.04 of the 0.07 gap.
+      Where the rest comes from (other document differences, or sampling noise of 640 windows)
+      was not measured.
+  - The samples are what a 62M base model gives: fluent MSA and English that drifts off topic, a
+    customer-service register ("Please feel free to reach out ..."), repetition in Gulf Arabic,
+    and gibberish in Arabizi. The Arabizi result is expected, because the corpus has almost no
+    Arabizi. Answering in the right format and intent is the job of Phase 5 (SFT).

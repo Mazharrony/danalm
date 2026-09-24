@@ -5,7 +5,21 @@ service in Gulf Arabic, English, Arabizi and mixed text. For each customer messa
 strict JSON, `{"intent": "...", "reply": "..."}`. It is meant to run quantized on a CPU or phone:
 it answers the easy majority of messages on-device and hands the rest to a bigger model or a human.
 
-**Status:** Phase 3 (model) is done, and Phase 4 (pretraining) is next.
+## Progress
+
+| Phase | Status | Headline |
+|---|---|---|
+| 0. Setup | done | Every run records its config, seed, git commit and library versions |
+| 1. Tokenizer | done | 16,384-token byte-level BPE; 14% fewer tokens than Qwen3.5 on Gulf Arabic |
+| 2. Data | done, except the human test set | 1.495B pretraining tokens; 18,547 SFT examples |
+| 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
+| 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min on one RTX 4070 |
+| 5. SFT | next | |
+| 6. Evaluation | waits for the human test set | |
+| 7. Quantization and deployment | later | |
+| 8. Presentation | later | |
+
+Results so far:
 
 - **Tokenizer (Phase 1):** `danalm-v1` is a 16,384-token byte-level BPE for Arabic, English and
   Arabizi. Against Qwen3.5's 248k-token tokenizer, it needs 14% fewer tokens on Gulf Arabic and
@@ -28,13 +42,86 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
   initial loss 9.705 against ln(16,384) = 9.704, and it overfits one batch. On the RTX 4070 it
   trains at 46k tokens/s, or 9.0 h per pass over the corpus
   ([results](docs/results/phase3_model.md)).
-- **Open:**
-  - The human test set: 65 English candidates from the Banking77 and CLINC150 test splits wait
-    for review. The Arabic parts need a native Gulf Arabic speaker (D-025).
+- **Pretraining (Phase 4):** one pass over the corpus's train split (1.488B tokens) in 4 h 49 min
+  on the RTX 4070.
+  With `torch.compile` (through `triton-windows`) it runs at 87k tokens/s, about 60% MFU.
+  - A pilot at ~1% of the budget chose the peak learning rate of 2e-3 by a rule fixed in advance
+    ([pilot](docs/results/phase4_pilot.md)).
+  - Validation loss fell from 9.705 to 3.330, with no loss spikes and no restarts
+    ([results](docs/results/phase4_pretrain.md)).
+
+Open: **the human test set**, the one missing piece. Phase 6 cannot give an honest score without
+it (see [Test data](#test-data)).
 
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
 choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
 token count, is in [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).
+
+## Test data
+
+DanaLM is scored only on data it never trained on. Like everything in `data/`, the sets are
+gitignored: the repository shows how each set is built and checked, not the messages themselves.
+
+| Set | Size | Used for | Status |
+|---|---|---|---|
+| **Human test set** (`data/test/test_set.jsonl`) | ~420 messages planned | Phase 6: intent accuracy, macro-F1 and valid-JSON rate, per language | being built |
+| Pretraining validation split | 7.64M tokens, ~0.5% of each source's documents | Validation loss during pretraining | done |
+| SFT validation split | 968 examples | Validation loss during SFT. The same teacher wrote it as the training data, so it cannot replace the test set | done |
+| Tokenizer evaluation sets | 10 sets of web text and customer-service messages | Comparing tokenizers in Phase 1 only | done |
+
+### Human test set
+
+It is the only honest measure of the model, so it is never used for training, tuning, prompt
+design or choosing between models. The full guide is [docs/TEST_SET.md](docs/TEST_SET.md).
+
+- **Size:** 21 intents × 4 varieties (Gulf Arabic, English, Arabizi, mixed) × 5 messages = 420,
+  and never fewer than 3 per cell.
+- **Who writes it:**
+  - People write it, not AI tools, and without looking at the training data. No real personal
+    data goes in.
+  - A native Gulf Arabic speaker writes or checks the Gulf Arabic, Arabizi and mixed messages.
+- **Leak check:** `scripts/check_overlap.py` compares every test message with all the training
+  text and finds exact and near copies (character 3-gram MinHash). It must report 0 overlaps
+  before every evaluation.
+
+| Part | Needed | Now |
+|---|---:|---|
+| English, the 10 intents covered by public human-written test data | 50 | 65 candidates waiting for review |
+| English, the other 11 intents (telecom and most delivery intents) | 55 | a person writes them |
+| Gulf Arabic, all 21 intents | 105 | needs a native speaker |
+| Arabizi, all 21 intents | 105 | needs a native speaker |
+| Mixed, all 21 intents | 105 | needs a native speaker |
+
+**The 65 English candidates** (`data/test/candidates-en/review.csv`, D-025):
+
+- **Source:** the test splits of Banking77 (CC-BY-4.0) and CLINC150 (CC-BY-3.0), each pinned to
+  a fixed revision. Their labels are mapped to our intents by rule. The train splits are never
+  used.
+- **Selection:**
+  - 160 candidates were fetched: 70 from Banking77 and 90 from CLINC150, at most 10 per intent
+    from each.
+  - The overlap check dropped 48 of them, mostly CLINC150 test sentences that nearly repeat its
+    train split.
+  - The sheet keeps up to 7 per intent, which gives 65 rows: 31 from Banking77 and 34 from
+    CLINC150.
+- **Per intent:**
+  - 7 each: `account_access`, `card_not_working`, `fees_and_charges`, `lost_or_stolen_card`,
+    `other`, `transfer_issue`, `unrecognized_transaction`.
+  - 6 each: `balance_or_statement`, `order_status`.
+  - 4: `loans_and_credit`.
+- **To review:**
+  1. In each row, write `y` or `n` in `keep`.
+  2. If the mapped intent is wrong, write the right one in `correct_intent`. Anything unusual
+     goes in `notes`.
+  3. Import the kept rows with your initials, then re-run the overlap check:
+
+```bash
+uv run python scripts/import_review.py --config configs/data/test_candidates_en.yaml review.verified_by=XX
+uv run python scripts/check_overlap.py --config configs/data/overlap.yaml
+```
+
+The 169 unit tests (`uv run pytest`) run on tiny synthetic fixtures in `tests/`, not on any of
+these sets.
 
 ## Setup (Windows 11, native)
 
@@ -106,6 +193,18 @@ The English test-set candidates and their review are described in [docs/TEST_SET
 | `uv run python scripts/model_sanity.py --config configs/model/large.yaml` | The brief's checks on the GPU: initial loss vs ln(vocab), overfit one batch, tokens/s, peak VRAM, MFU | ~1 min per size |
 | `uv run python scripts/phase3_report.py --config configs/model/report.yaml` | Compares the sizes and applies the size rule that was fixed in advance | seconds |
 
+### Phase 4: pretraining
+
+Stop the teacher server first: the training scripts refuse to run while it is up.
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run pytest tests/test_train.py` | Learning-rate schedule, weight-decay groups, windows that make every token a target once, checkpoint pruning, bit-identical resume on the CPU | seconds |
+| `uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml` | One pilot run (~1% of the budget); the other learning rates and the resume check are listed in `configs/pretrain/pilot_report.yaml` | ~3 min each |
+| `uv run python scripts/pilot_report.py --config configs/pretrain/pilot_report.yaml` | Pilot curves, and the learning-rate rule that was fixed in advance | seconds |
+| `uv run python scripts/pretrain.py --config configs/pretrain/full.yaml` | The full run: checkpoints every 250 steps, and rerunning the command resumes from the latest | ~4 h 50 min |
+| `uv run python scripts/pretrain_report.py --config configs/pretrain/report.yaml` | Curves, validation loss per source, train vs validation windows, sample continuations | ~1 min |
+
 ## Repository layout
 
 ```text
@@ -115,7 +214,8 @@ docs/          project brief, decision log, data ledger, test-set guide,
 scripts/       command-line entry points
 src/danalm/    library: config, seeding, run tracking, data pipeline and token shards,
                HF sampler, labelled public datasets, ledger, dialect and reply checks,
-               teacher server and client (with resumable answer logs), tokenizer, model
+               teacher server and client (with resumable answer logs), tokenizer, model,
+               training loop
 tests/         unit tests and tiny synthetic fixtures
 data/ runs/ artifacts/   gitignored: datasets, run records, tokenizers and checkpoints
 ```

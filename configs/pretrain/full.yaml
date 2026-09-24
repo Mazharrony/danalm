@@ -1,0 +1,27 @@
+# Phase 4 pretraining (D-028): the chosen model size (D-026) on one pass over the train shards.
+#   uv run python scripts/pretrain.py --config configs/pretrain/full.yaml
+# Re-running the same command resumes from the latest checkpoint in train.out_dir.
+base: ../model/large.yaml
+run_name: pretrain-full
+
+train:
+  tokens_dir: ${paths.data_dir}/pretrain_tokens
+  out_dir: ${paths.artifacts_dir}/checkpoints/${run_name}
+  seq_len: 1024
+  micro_batch: 16
+  grad_accum: 16               # 16 x 16 x 1,024 = 262,144 tokens per optimizer step
+  total_tokens: null           # null = one pass over the train shards (about 5,675 steps)
+  lr: 1.0e-3
+  min_lr: 1.0e-4
+  warmup_steps: 200
+  weight_decay: 0.1
+  betas: [0.9, 0.95]
+  grad_clip: 1.0
+  log_every: 10
+  eval_every: 250
+  eval_batches: 40             # 40 x 16 windows = 655k validation tokens, the same every time
+  ckpt_every: 250              # about 25 minutes
+  keep_ckpts: 2
+  compile: true                # torch.compile via triton-windows: 86k vs 45k tok/s, same outputs (D-028)
+  stop_after_steps: null       # a number stops early (to test resuming)
+  peak_tflops: ${sanity.peak_tflops}

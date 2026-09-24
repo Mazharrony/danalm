@@ -1,0 +1,14 @@
+# Phase 4 pilot (brief: ~1% of the budget, curves before the full run). Same model and settings
+# as full.yaml on ~1% of its tokens, with the schedule compressed to the pilot's 56 steps so the
+# curve shows warmup, the peak learning rate and the decay.
+#   uv run python scripts/pretrain.py --config configs/pretrain/pilot.yaml
+base: full.yaml
+run_name: pretrain-pilot
+
+train:
+  total_tokens: 14880000       # ~1% of the 1,487.9M train tokens: 56 steps
+  warmup_steps: 6
+  log_every: 2
+  eval_every: 8
+  eval_batches: 20
+  ckpt_every: 16

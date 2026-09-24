@@ -160,3 +160,21 @@ def sample_windows(
     return np.stack(
         [np.asarray(shards[w][s : s + seq_len + 1], dtype=np.int64) for w, s in zip(which, starts, strict=True)]  # fmt: skip
     )
+
+
+def window_index(shard_lengths: list[int], seq_len: int) -> np.ndarray:
+    """(n, 2) int64 array of (shard, start) for every training window of seq_len + 1 tokens, laid
+    end to end so that each token is a target exactly once (consecutive windows share one token:
+    the last target of one is the first input of the next). A window never spans two shards."""
+    parts = []
+    for shard, n in enumerate(shard_lengths):
+        starts = np.arange(0, n - seq_len, seq_len, dtype=np.int64)
+        parts.append(np.stack([np.full_like(starts, shard), starts], axis=1))
+    return np.concatenate(parts)
+
+
+def gather_windows(shards: list[np.ndarray], windows: np.ndarray, seq_len: int) -> np.ndarray:
+    """(len(windows), seq_len + 1) int64 tokens for rows of window_index()."""
+    return np.stack(
+        [np.asarray(shards[int(k)][int(s) : int(s) + seq_len + 1], dtype=np.int64) for k, s in windows]  # fmt: skip
+    )

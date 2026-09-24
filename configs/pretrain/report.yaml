@@ -1,0 +1,22 @@
+# Phase 4 results page for the finished pretraining run.
+#   uv run python scripts/pretrain_report.py --config configs/pretrain/report.yaml
+base: ../base.yaml
+run_name: pretrain-report
+
+report:
+  run_dir: ${paths.artifacts_dir}/checkpoints/pretrain-full
+  val_jsonl: ${paths.data_dir}/pretrain_corpus/val.jsonl   # cleaned held-out documents with sources
+  tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
+  eos_token: "<|endoftext|>"
+  device: cuda                 # cpu works too (slower); never while another job uses the GPU
+  docs_per_source: 200
+  prompts:
+    - "مرحبا، ابغي اعرف ليش"
+    - "تعتبر مدينة دبي من"
+    - "The best way to learn a new language is"
+    - "shlonak, abi a3ref"
+    - "Customer: my card is not working at the ATM.\nAgent:"
+  sample_tokens: 40
+  temperature: 0.8
+  plot: docs/results/phase4_pretrain.png
+  results_md: docs/results/phase4_pretrain.md

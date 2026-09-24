@@ -822,6 +822,10 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       learning rate 2e-5, batch 32, 3 epochs.
     - The best epoch is chosen by accuracy on the SFT validation split. The human test set is
       not used.
+  - **Operational change at 21:05.** Qwen's host prompt cache is capped at 2 GiB
+    (`--cache-ram 2048`, default 8 GiB) from the rewrite step on. During the full reply check
+    the server grew to 34 GB committed, and a longer unattended job could have reached the
+    watchdog's limit. The speed effect is compared with the full run's rate in the report.
   - **Not tonight:** no test-set evaluation, no push, and no change to the intent taxonomy.
 - **Why:** the model's clearest weaknesses are in the data: broken replies, thin mixed and
   Arabizi cells, and intents that get confused. Pretraining loss was also still falling at the

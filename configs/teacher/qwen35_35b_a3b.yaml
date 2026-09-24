@@ -12,6 +12,8 @@ teacher:
   # no mmap = 68 tok/s, 9.7 GB VRAM, 16 GB RAM peak. The last setting is used.
   parallel: 8
   ctx_size: 32768      # 4096 tokens per slot
+  # --cache-ram 2048 (2026-09-24, D-031): the host prompt cache (default 8 GiB) grew the server to
+  # 34 GB committed during the full reply check; capped for the unattended overnight run.
   extra_args: ["--n-gpu-layers", "99", "--n-cpu-moe", "27", "--load-mode", "none",
-               "--flash-attn", "on", "--jinja", "--reasoning-format", "auto"]
+               "--flash-attn", "on", "--jinja", "--reasoning-format", "auto", "--cache-ram", "2048"]
   startup_timeout_s: 600

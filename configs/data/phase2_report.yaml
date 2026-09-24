@@ -10,6 +10,10 @@ report:
   token_index: ${paths.data_dir}/pretrain_tokens/index.json
   shard_verify: ${paths.data_dir}/pretrain_tokens/verify.json
   sft_dir: ${paths.data_dir}/sft/sft-full       # stats.json, manifest.json, verified.jsonl
+  arabizi_replies_dir: ${paths.data_dir}/sft/sft-arabizi-replies   # D-023
+  other_real_dir: ${paths.data_dir}/sft/sft-other-real             # D-024
+  other_mixed_dir: ${paths.data_dir}/sft/sft-other-mixed           # D-024
+  judge_file: ${paths.data_dir}/sft/final-candidates/verified.jsonl  # the single final judge pass
   sft_final_dir: ${paths.data_dir}/sft/final    # train/val.jsonl and stats.json (build_sft_dataset.py)
   examples_per_request: ${sft.examples_per_request}
   tokenizer_name: danalm-v1

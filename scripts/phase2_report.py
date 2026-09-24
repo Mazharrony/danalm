@@ -16,7 +16,7 @@ from typing import Any
 from danalm.config import config_from_cli
 from danalm.data import ledger
 
-VARIETIES = ["gulf_arabic", "english", "arabizi", "mixed"]
+VARIETIES = ["gulf_arabic", "english", "arabizi", "mixed", "saudi_arabic"]
 
 
 def load(path: str | Path) -> Any:
@@ -126,7 +126,7 @@ def generation_section(r: dict[str, Any]) -> list[str]:
     out = [
         "## Synthetic SFT data",
         "",
-        "### Generation",
+        "### Generation (full run)",
         "",
         f"Teacher: {manifest['teacher']} (revision `{manifest['revision'][:8]}`), "
         f"{manifest['requests']:,} requests of {r['examples_per_request']} examples each. "
@@ -147,14 +147,58 @@ def generation_section(r: dict[str, Any]) -> list[str]:
     return out
 
 
-def judge_section(r: dict[str, Any]) -> list[str]:
-    rows = jsonl(Path(r["sft_dir"]) / "verified.jsonl")
+def reasons(stats: dict[str, int], prefix: str = "") -> str:
+    """'reason n, ...' for the rejection counts in `stats` (keys like '<prefix>reason')."""
+    items = {k.removeprefix(prefix): n for k, n in stats.items() if k.startswith(prefix)}
+    return ", ".join(f"{k} {n:,}" for k, n in sorted(items.items(), key=lambda kv: -kv[1]) if k != "kept") or "none"  # fmt: skip
+
+
+def second_pass_section(r: dict[str, Any]) -> list[str]:
+    """Arabizi replies rewritten (D-023), `other` top-ups (D-024) and the merge before judging."""
+    az = load(Path(r["arabizi_replies_dir"]) / "stats.json")
+    real = load(Path(r["other_real_dir"]) / "stats.json")
+    manifest = load(Path(r["other_real_dir"]) / "manifest.json")
+    mixed = load(Path(r["other_mixed_dir"]) / "stats.json")
+    merge = load(Path(r["judge_file"]).parent / "merge_stats.json")
+    real_kept = sum(n for k, n in real.items() if k.endswith("/kept"))
     out = [
         "",
-        "### Judge (blind re-labelling by the same model)",
+        "### Second pass (D-023, D-024)",
         "",
-        "The judge sees only the message and the 21 intent descriptions. Rows where it disagrees"
-        " with the intended label are dropped from the final set.",
+        f"- **Arabizi replies in Gulf Arabic script (D-023):** {az.get('arabizi/kept', 0):,} of"
+        f" {az['messages']:,} Arabizi messages got a reply that passed the checks"
+        f" (rejected: {reasons(az, 'arabizi/')}).",
+        "- **Real out-of-scope messages for `other` (D-024):** "
+        + ", ".join(f"{m['name']} {m['rows_kept']:,} of {m['rows_read']:,} rows" for m in manifest)
+        + f"; {real_kept:,} got a reply that passed the checks.",
+        f"- **Code-mixed `other` top-up:** {mixed['requests']:,} requests, "
+        f"{mixed['examples_parsed']:,} examples parsed, {mixed['kept']:,} kept"
+        f" (rejected: {reasons(mixed, 'mixed/')}).",
+        "",
+        "Merge before the single judge pass (the language tag is recomputed with the current"
+        " tagger, and duplicates across sources are dropped):",
+        "",
+        "| Source | Variety | Kept | Dropped (reason: count) |",
+        "|---|---|---:|---|",
+    ]
+    groups: dict[tuple[str, str], dict[str, int]] = {}
+    for key, n in merge.items():
+        source, variety, reason = key.split("/")
+        groups.setdefault((source, variety), {})[reason] = n
+    for (source, variety), c in sorted(groups.items()):
+        out.append(f"| {source} | {variety} | {c.get('kept', 0):,} | {reasons(c)} |")
+    return out
+
+
+def judge_section(r: dict[str, Any]) -> list[str]:
+    rows = jsonl(r["judge_file"])
+    out = [
+        "",
+        "### Judge (one blind re-labelling pass over all candidates)",
+        "",
+        "The judge (the same model as the teacher) sees only the message and the 21 intent"
+        " descriptions (the final ones, D-021). Rows where it disagrees with the intended label"
+        " are dropped from the final set.",
         "",
         "| Variety | Kept rows | Judge agrees | No valid label |",
         "|---|---:|---:|---:|",
@@ -234,7 +278,7 @@ def main() -> None:
         "# Phase 2 results: data",
         "",
         f"Generated on {date.today().isoformat()} by `scripts/phase2_report.py` from the run"
-        " outputs; do not edit by hand. Decisions: D-019 to D-022 in"
+        " outputs; do not edit by hand. Decisions: D-019 to D-025 in"
         " [DECISIONS.md](../DECISIONS.md). No native speaker has reviewed the synthetic data yet.",
         "",
         *corpus_section(r, cfg["ledger"]["jsonl"]),
@@ -242,7 +286,8 @@ def main() -> None:
     sft = Path(r["sft_dir"])
     steps = [
         (sft / "stats.json", generation_section),
-        (sft / "verified.jsonl", judge_section),
+        (Path(r["judge_file"]).parent / "merge_stats.json", second_pass_section),
+        (Path(r["judge_file"]), judge_section),
         (Path(r["sft_final_dir"]) / "stats.json", final_section),
     ]
     for needed, section in steps:

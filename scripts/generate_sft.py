@@ -27,7 +27,7 @@ from danalm.data.dialect import msa_markers, non_gulf_markers
 from danalm.data.hub import text_stats
 from danalm.data.intents import load_intents
 from danalm.data.pipeline import detect_lang, minhash, normalize
-from danalm.data.reply_checks import claims_done_action
+from danalm.data.reply_checks import reply_problem
 from danalm.teacher.checkpoint import AnswerLog
 from danalm.teacher.client import TEACHER_ERRORS, chat_with_retries, parse_json_objects
 from danalm.teacher.server import TeacherServer
@@ -36,11 +36,16 @@ from danalm.utils.seed import set_seed
 
 
 def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[dict[str, Any]]:
-    """One request per (intent, variety, repeat), with a seeded persona, tone and sampling seed."""
+    """One request per (intent, variety, repeat), with a seeded persona, tone and sampling seed.
+    `only_intents` / `only_varieties` (lists or null) restrict the plan, e.g. for a top-up run."""
     rng = random.Random(seed)
     specs = []
     for intent in intents:
+        if sft["only_intents"] and intent["name"] not in sft["only_intents"]:
+            continue
         for variety, v in sft["varieties"].items():
+            if sft["only_varieties"] and variety not in sft["only_varieties"]:
+                continue
             # a variety may ask for more requests when its yield is low (e.g. mixed)
             for _ in range(v.get("requests_per_cell", sft["requests_per_cell"])):
                 specs.append(
@@ -89,14 +94,12 @@ class Filter:
         msg, reply = normalize(msg, **self.sft["normalize"]), normalize(
             reply, **self.sft["normalize"]
         )
-        lang, reply_lang = detect_lang(msg), detect_lang(reply)
+        lang = detect_lang(msg)
         if lang not in v["keep_langs"]:
             return None, f"message_lang_{lang}"
-        if reply_lang not in v["reply_langs"]:
-            return None, f"reply_lang_{reply_lang}"
-        if claims_done_action(reply):
-            return None, "reply_claims_action"
-        if v["gulf_filter"] and (non_gulf_markers(msg) or non_gulf_markers(reply)):
+        if problem := reply_problem(reply, v["reply_langs"], v["gulf_filter"]):
+            return None, problem
+        if v["gulf_filter"] and non_gulf_markers(msg):
             return None, "non_gulf_dialect"
         if v["gulf_filter"] and msa_markers(msg):
             return None, "msa_in_message"

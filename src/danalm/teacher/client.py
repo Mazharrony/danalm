@@ -103,3 +103,14 @@ def parse_labels(answer: str) -> dict[int, str]:
         if m:
             labels[int(m.group(1))] = m.group(2)
     return labels
+
+
+def parse_numbered(answer: str, n: int, field: str) -> dict[int, str]:
+    """{number: text} from JSON lines like {"n": 3, "<field>": "..."}. Lines whose number is
+    missing or outside 1..n, or whose field is empty, are skipped."""
+    out = {}
+    for obj in parse_json_objects(answer):
+        k, text = obj.get("n"), obj.get(field)
+        if isinstance(k, int) and 1 <= k <= n and isinstance(text, str) and text.strip():
+            out[k] = text
+    return out

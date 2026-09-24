@@ -1,0 +1,17 @@
+# D-023: Arabizi messages get Gulf Arabic replies in Arabic script. Keeps the full run's Arabizi
+# messages and labels and asks the teacher for new replies; the old Arabizi replies were mostly
+# near-meaningless (D-022).
+#   uv run python scripts/write_replies.py --config configs/sft/arabizi_replies.yaml
+base: full.yaml
+run_name: sft-arabizi-replies
+
+replies:
+  inputs: ["${paths.data_dir}/sft/sft-full/generated.jsonl"]
+  varieties:
+    arabizi: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+  batch: 10
+  max_rows: null               # a number runs a quick pilot on the first rows
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  params: ${sft.params}
+  system: ${sft.system}
+  prompt: ${sft.reply_prompt}

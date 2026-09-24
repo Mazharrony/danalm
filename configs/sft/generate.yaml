@@ -13,6 +13,8 @@ sft:
   used_for: supervised fine-tuning (Phase 5)
   examples_per_request: 8
   requests_per_cell: 1
+  only_intents: null           # a list restricts the plan, e.g. [other] for a top-up run
+  only_varieties: null
   near_dup_threshold: 0.8      # MinHash on messages, across the whole run
   minhash_num_perm: 64
   shingle_words: 2             # messages are short, so word pairs
@@ -43,6 +45,22 @@ sft:
   intent_rules:
     handoff_to_human: " The reply says you will connect them to a human agent."
     other: " The reply answers a greeting or thanks politely and says what you can help with."
+  reply_prompt: >-             # write_replies.py: replies for existing messages, in batches
+    Below are {n} numbered customer messages to a UAE customer-service chatbot, each with its
+    intent. Write the assistant's reply to each message. {reply_style}
+    One or two short, polite sentences. Never invent facts (balances, amounts, dates, names,
+    policies). Never ask for card numbers, PINs, passwords, OTPs or CVV. The assistant cannot
+    see the account or do anything itself, so never say something has been done (blocked,
+    frozen, refunded, sent, changed); say what the customer should do next or that the request
+    will be passed to the team.
+
+    {messages}
+
+    Output exactly {n} lines, each one JSON object: {{"n": <message number>, "reply": "..."}}.
+  reply_styles:                # shared by the varieties below and by write_replies.py
+    gulf_arabic: Reply in polite, simple Gulf Arabic (Arabic script), like a UAE call-centre agent.
+    english: Reply in clear, simple English.
+    mixed: Reply in Gulf Arabic (Arabic script), keeping the English terms the customer used.
   varieties:
     gulf_arabic:
       reply_langs: [ar]
@@ -56,7 +74,7 @@ sft:
         وين، شلون، وايد، مب، هاي، الحين، باچر، زين، عقب. Never use Egyptian, Levantine or
         Maghrebi words such as عايز، محتاج، ليه، ايه، حصل، مش، مفيش، دي، ده، كتير، بدي، هلق،
         واش، ديالي, and never negate with a ش ending (ماقدرش). No formal Standard Arabic.
-      reply_style: Reply in polite, simple Gulf Arabic (Arabic script), like a UAE call-centre agent.
+      reply_style: ${sft.reply_styles.gulf_arabic}
     english:
       reply_langs: [en]
       keep_langs: [en]
@@ -67,11 +85,11 @@ sft:
       style: >-
         Write the message in English as UAE residents type it: informal, sometimes non-native
         grammar, abbreviations (pls, asap, u) and typos, amounts in AED.
-      reply_style: Reply in clear, simple English.
+      reply_style: ${sft.reply_styles.english}
     arabizi:
-      reply_langs: [arabizi]     # an Arabizi message gets an Arabizi reply, not English
-      keep_langs: [arabizi, en]  # Arabizi without digits is tagged "en" by the heuristic
-      gulf_filter: false
+      reply_langs: [ar]          # D-023: Arabizi messages get Gulf Arabic replies in Arabic script
+      keep_langs: [arabizi]      # the D-011 tagger finds 99.9% of Arabizi messages
+      gulf_filter: true          # checks the Arabic-script reply (the message has no Arabic script)
       personas: [an Emirati man in his 20s, an Emirati university student, a young Emirati woman]
       style: >-
         Write the message in Arabizi: Emirati Gulf Arabic typed with Latin letters, with numbers
@@ -79,7 +97,7 @@ sft:
         as abi / abgha, laish, shu, wain, shlon, wayed, mob, al7een, zain. Every word must be a
         real Gulf Arabic word; never use Egyptian or Levantine words such as 3ayez, leh, kteer,
         mesh, mafeesh, biddi.
-      reply_style: Reply in the same Arabizi style (Gulf Arabic in Latin letters and numbers).
+      reply_style: ${sft.reply_styles.gulf_arabic}
     mixed:
       reply_langs: [ar, mixed]
       keep_langs: [mixed]
@@ -90,7 +108,7 @@ sft:
         Write the message mixing Emirati Gulf Arabic (Arabic script) with English words in the
         same sentence, as people in the UAE often do (for example "الطلب ما وصل and the app says
         delivered"). Never only English, never only Arabic. Never use Egyptian or Levantine words.
-      reply_style: Reply in Gulf Arabic (Arabic script), keeping the English terms the customer used.
+      reply_style: ${sft.reply_styles.mixed}
 
 verify:  # blind re-labelling by a judge model (scripts/verify_sft.py); disagreements are dropped
   batch: 20

@@ -11,8 +11,15 @@ overlap:
   char_ngram: 3                # 3-grams keep near-copies with small edits above the threshold
   num_perm: 128
   near_dup_threshold: 0.6      # Jaccard of character 3-gram sets (measured: near-copies 0.77-0.88)
+  compare_up_to: 4             # training texts longer than 4x the longest test text are skipped
   train_sets:
     - {files: ["${paths.data_dir}/sft/*/generated.jsonl"], field: message, near_dup: true}
     - {files: ["${paths.data_dir}/sft/*/rejected.jsonl"], field: message, near_dup: true}
+    - {files: ["${paths.data_dir}/sft/*/messages.jsonl"], field: message, near_dup: true}
     - {files: ["${paths.data_dir}/synthetic/**/*.jsonl"], field: text, near_dup: true}
+    # the small domain sources of the pretraining corpus get the near-copy check too (CLINC150's
+    # train split phrases things much like its test split)
+    - {files: ["${paths.data_dir}/raw/pretrain_corpus/clinc-train.jsonl",
+               "${paths.data_dir}/raw/pretrain_corpus/massive-ar-train.jsonl",
+               "${paths.data_dir}/raw/pretrain_corpus/bitext-*.jsonl"], field: text, near_dup: true}
     - {files: ["${paths.data_dir}/pretrain_corpus/*.jsonl"], field: text, near_dup: false}

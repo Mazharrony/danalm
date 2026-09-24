@@ -4,7 +4,9 @@ Usage: uv run python scripts/check_overlap.py --config configs/data/overlap.yaml
 Texts are canonicalized first (pipeline normalization, lower case, ة→ه, ى→ي, alef forms→ا,
 punctuation removed). A test text overlaps if it then equals a training text, or is a
 near-duplicate of a short training text (MinHash over character n-grams, which suits messages of
-a few words). Long pretraining documents are checked for exact equality only.
+a few words). Long pretraining documents are checked for exact equality only. Training files are
+streamed, and texts longer than `compare_up_to` x the longest test text are skipped (they cannot
+be a copy of one), so memory stays small even with the 1.5B-token corpus.
 The check is deliberately strict: a flagged test message is rewritten or removed by a person.
 Writes overlap_report.json next to the first test file and exits with code 1 on any overlap.
 """
@@ -13,6 +15,7 @@ import glob
 import json
 import re
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -39,28 +42,35 @@ def char_minhash(text: str, n: int, num_perm: int) -> MinHash:
     return mh
 
 
-def read_texts(patterns: list[str], field: str) -> list[tuple[str, str]]:
-    """(file, text) for every row of every file matching the glob patterns."""
-    rows = []
+def iter_texts(patterns: list[str], field: str) -> Iterator[tuple[str, str]]:
+    """(file, text) for every row of every file matching the glob patterns, one line at a time.
+    Rows without a text in `field` (e.g. rejected teacher output with broken fields) are skipped."""
     for path in sorted({p for pattern in patterns for p in glob.glob(pattern, recursive=True)}):
         with open(path, encoding="utf-8") as fh:
-            rows += [(path, json.loads(line)[field]) for line in fh if line.strip()]
-    return rows
+            for line in fh:
+                text = json.loads(line).get(field) if line.strip() else None
+                if isinstance(text, str) and text.strip():
+                    yield path, text
 
 
 def main() -> None:
     cfg = config_from_cli(__doc__)
     o = cfg["overlap"]
     norm = lambda t: canonical(t, o["normalize"])  # noqa: E731
-    test = read_texts(o["test_files"], o["test_field"])
+    test = list(iter_texts(o["test_files"], o["test_field"]))
     if not test:
         sys.exit(f"no test texts found in {o['test_files']}")
+    max_len = o["compare_up_to"] * max(len(text) for _, text in test)
+    skipped = 0
 
     lsh = MinHashLSH(threshold=o["near_dup_threshold"], num_perm=o["num_perm"])
     short: dict[str, str] = {}
     exact: dict[str, str] = {}
     for spec in o["train_sets"]:
-        for i, (path, text) in enumerate(read_texts(spec["files"], spec["field"])):
+        for i, (path, text) in enumerate(iter_texts(spec["files"], spec["field"])):
+            if len(text) > max_len:
+                skipped += 1
+                continue
             key = norm(text)
             exact.setdefault(key, path)
             if spec["near_dup"] and key not in short:
@@ -83,6 +93,7 @@ def main() -> None:
     report = {
         "test_texts": len(test),
         "train_texts": len(exact),
+        "train_texts_skipped_as_too_long": skipped,
         "overlaps": len(hits),
         "hits": hits,
     }

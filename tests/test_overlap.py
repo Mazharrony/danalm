@@ -34,6 +34,7 @@ def run(tmp_path: Path, test_texts: list[str], monkeypatch) -> int:
             "char_ngram": 3,
             "num_perm": 128,
             "near_dup_threshold": 0.6,
+            "compare_up_to": 4,
             "train_sets": [
                 {"files": [str(tmp_path / "train.jsonl")], "field": "message", "near_dup": True},
                 {"files": [str(tmp_path / "docs.jsonl")], "field": "text", "near_dup": False},

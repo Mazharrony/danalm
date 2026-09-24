@@ -4,8 +4,12 @@ Usage: uv run python scripts/pretrain_report.py --config configs/pretrain/report
 Reads <run>/metrics.jsonl and <run>/model.pt and writes report.results_md and report.plot:
 1. train and validation loss, learning rate, gradient norm and speed over the run;
 2. validation loss per corpus source, on up to report.docs_per_source held-out documents each
-   (from the cleaned validation split, which training never saw);
-3. sample continuations of fixed prompts (seeded), to see what the model learned.
+   (from the cleaned validation split, which training never saw), next to each source's share
+   of the train and validation tokens;
+3. the final model's loss on a seeded sample of train windows and on the run's own validation
+   windows (the same draw as scripts/pretrain.py), to explain the gap between the two curves;
+4. sample continuations of fixed prompts (seeded), to see what the model learned.
+The config is based on the run's config, so train.* and seed are the run's own.
 """
 
 import json
@@ -18,10 +22,12 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
 import torch  # noqa: E402
 from tokenizers import Tokenizer  # noqa: E402
 
 from danalm.config import config_from_cli  # noqa: E402
+from danalm.data.shards import gather_windows, read_shard, window_index  # noqa: E402
 from danalm.model.transformer import DanaLM, ModelConfig  # noqa: E402
 
 
@@ -82,6 +88,25 @@ def main() -> None:
                 total, count = total + loss.item(), count + ids.shape[1] - 1
             per_source[source] = (len(texts), count, total / count)
 
+    t = cfg["train"]
+    tokens_dir = Path(t["tokens_dir"])
+    index = json.loads((tokens_dir / "index.json").read_text(encoding="utf-8"))
+    mb, n_windows = t["micro_batch"], t["eval_batches"] * t["micro_batch"]
+    window_loss, share = {}, {}
+    for split in ("train", "val"):
+        shards = [read_shard(tokens_dir / f["file"]) for f in index["splits"][split]["files"]]
+        windows = window_index([len(s) for s in shards], t["seq_len"])
+        rows = np.random.default_rng(cfg["seed"]).permutation(len(windows))[:n_windows]
+        losses = []
+        with torch.no_grad():
+            for b in range(0, n_windows, mb):
+                w = gather_windows(shards, windows[rows[b : b + mb]], t["seq_len"])
+                x = torch.from_numpy(w).to(r["device"])
+                losses.append(model(x[:, :-1], x[:, 1:])[1].item())
+        window_loss[split] = sum(losses) / len(losses)
+        counts = {s: v["tokens"] for s, v in index["splits"][split]["per_source"].items()}
+        share[split] = {s: n / sum(counts.values()) for s, n in counts.items()}
+
     torch.manual_seed(cfg["seed"])
     samples = []
     for prompt in r["prompts"]:
@@ -104,14 +129,22 @@ def main() -> None:
         f"![pretraining curves]({Path(r['plot']).name})",
         "",
         f"Validation loss per source (up to {r['docs_per_source']} held-out documents each, first"
-        f" {seq:,} tokens of each):",
+        f" {seq:,} tokens of each), with each source's share of the train and validation tokens:",
         "",
-        "| Source | Documents | Tokens | Loss | Perplexity |",
-        "|---|---:|---:|---:|---:|",
+        "| Source | Documents | Tokens | Loss | Perplexity | Share of train | Share of val |",
+        "|---|---:|---:|---:|---:|---:|---:|",
         *(
             f"| {s} | {n:,} | {c:,} | {loss:.3f} | {math.exp(loss):.1f} |"
+            f" {share['train'].get(s, 0):.2%} | {share['val'].get(s, 0):.2%} |"
             for s, (n, c, loss) in sorted(per_source.items(), key=lambda kv: kv[1][2])
         ),
+        "",
+        "Train vs validation: each point of the train curve is measured on a batch before the"
+        " model learns from it, so both curves are losses on text the model has not seen yet. The"
+        f" final model scores **{window_loss['train']:.3f}** on {n_windows:,} train windows of"
+        f" {t['seq_len']:,} tokens (the first ones in the run's seeded order, so a random sample"
+        " that it trained on in its first steps) and"
+        f" **{window_loss['val']:.3f}** on the run's {n_windows:,} validation windows.",
         "",
         f"Sample continuations (temperature {r['temperature']}, {r['sample_tokens']} tokens, seed"
         f" {cfg['seed']}). This is a base model: it continues text, it does not answer yet.",

@@ -1,6 +1,7 @@
 # Phase 4 results page for the finished pretraining run.
 #   uv run python scripts/pretrain_report.py --config configs/pretrain/report.yaml
-base: ../base.yaml
+# Based on full.yaml so that the seed, token shards and validation windows are the run's own.
+base: full.yaml
 run_name: pretrain-report
 
 report:

@@ -98,7 +98,7 @@ flowchart LR
 | 2. Data | done; the Arabic parts of the test set are open | 1.495B pretraining tokens; 18,547 SFT examples (20,572 after the Phase 5 clean-up and top-up, 24,263 with the real messages of D-033) |
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
-| 5. SFT | done; a second round added real messages (D-033) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages |
+| 5. SFT | done; a second round added real messages (D-033), a third new question types (D-037, not deployed yet) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages; after D-037, 92.1% on 1,298 held-out messages of the new question types (D-033 model: 65.4%) |
 | 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
 | 7. Quantization and deployment | done | INT4 ONNX, 78 MB: 0.12 s per answer on 4 CPU threads (6.7× faster), 84% on the English test; FastAPI, Docker, CI, Gradio demo |
 | 8. Presentation | done; publishing on Hugging Face is the owner's step | Architecture diagrams, a [model card](docs/MODEL_CARD.md), the Hugging Face model folder and Space, built and checked locally |
@@ -162,6 +162,22 @@ Results by phase:
   - The D-029 recipe ran on both pretraining bases × two learning rates.
   - The chosen model scores 94.4% on the real dev set, where the Phase 5 model scores 66.4%. On
     the synthetic validation split it scores 93.1%, and every language variety holds.
+- **SFT with new question types (Phase 5c, D-037):** trying the demo showed the model had
+  rarely seen status checks, how-to questions, costs, conditions, other countries and off-topic
+  requests. This round added 10,039 examples of them, with every rule fixed before any data was
+  made ([results](docs/results/phase5c_qtypes.md)).
+  - Sources: English Bitext and MASSIVE messages, and a Qwen grid of Gulf Arabic, Arabizi and
+    mixed messages. Qwen wrote every reply under a stricter rule: refer only to what the
+    customer wrote.
+  - On 1,298 held-out messages of the new question types: 92.1%, against 65.4% for the D-033
+    model. They come from the same datasets as a third of the new data, so this overstates the
+    gain on new wording.
+  - Qwen judged 86.3% of 300 development replies good, against 79.0% (McNemar p = 0.012).
+    Most of the gain is replies that answer the question.
+  - Real dev set 93.8% (D-033: 94.4%, p = 0.53). Test set 84.4%, unchanged.
+  - Worse: more English replies with stray Arabic letters (28 of 2,012 development replies,
+    against 10). The owner's "send money to Bangladesh" message is still wrong, now with high
+    confidence. This model is not deployed yet.
 - **Evaluation (Phase 6, English part):** the 64 human test messages, scored once per model with
   the same protocol.
 
@@ -169,6 +185,7 @@ Results by phase:
   |---|---:|---:|---:|---:|
   | DanaLM, Phase 5 model ([results](docs/results/phase6_eval.md)) | 56.2% | 57.8% | 100% | 100% |
   | DanaLM after real messages ([results](docs/results/phase6b_eval.md)) | **84.4%** | 85.5% | 100% | 100% |
+  | DanaLM after new question types ([results](docs/results/phase6c_eval.md)) | **84.4%** | 85.1% | 100% | 100% |
   | CAMeLBERT-mix classifier (110M) | 46.9% | 46.4% | – | – |
   | Qwen3.5-35B-A3B, zero-shot | 89.1% | 90.3% | – | – |
 
@@ -389,6 +406,21 @@ Stop the teacher server before the training steps; the Qwen steps start it thems
 | `uv run python scripts/evaluate_dev.py --config configs/sft/report_real.yaml` | The Phase 5 model on the real dev set, for comparison | ~1 min |
 | `uv run python scripts/real_round_report.py --config configs/sft/report_real.yaml` | Applies the D-033 rule, writes the results page and `artifacts/checkpoints/sft-selected-5b.json` | seconds |
 | the three Phase 6 commands with `--config configs/eval/phase6b.yaml` | Scores the chosen model on the human test set with the D-032 protocol | ~5 min |
+
+### Phase 5c: new question types (D-037)
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run python scripts/fetch_labelled.py --config configs/sft/qtypes_bitext.yaml`, then `split_real.py` with the same config (and both again with `qtypes_massive.yaml`) | Fetches Bitext and MASSIVE, maps them to our intents and holds out the question-type dev set | ~1 min |
+| `uv run python scripts/write_replies.py --config configs/sft/qtypes_bitext.yaml`, then `verify_sft.py` with the same config (and both with `qtypes_massive.yaml`) | Qwen replies, then the blind label judge | ~23 min, ~5 min (MASSIVE: ~11 min, ~2 min) |
+| `uv run python scripts/generate_sft.py --config configs/sft/qtypes_gen.yaml`, then `verify_sft.py` with the same config (and both with `qtypes_gen2.yaml`, the top-up) | The Qwen question-type grid, then the label judge | ~1 h 37 min, ~9 min (top-up: ~56 min, ~5 min) |
+| `uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml check.scope=all check.data_dir=data/sft/sft-qtypes-gen "check.splits=[verified]" check.out_dir=data/sft/reply-check-qt-grid` | Qwen proofreads every reply; the same for `bitext`, `massive` and `grid2` | ~4–24 min each |
+| `uv run python scripts/assemble_sft_v4.py --config configs/sft/v5.yaml` | Builds `data/sft/final-v5` | seconds |
+| `uv run python scripts/sft.py --config configs/sft/train_qtypes.yaml train.lr=1.0e-3 run_name=sft-r4-second-lr1e-3 train.init=artifacts/checkpoints/pretrain-second/model.pt` | One SFT run, evaluated on the SFT validation split and both dev sets after each epoch (four runs: two bases × lr 3e-4 and 1e-3) | ~20 min |
+| `uv run python scripts/evaluate_dev.py --config configs/sft/report_qtypes.yaml` | The D-033 model on the question-type dev set, for comparison | ~2 min |
+| `uv run python scripts/qtype_round_report.py --config configs/sft/report_qtypes.yaml` | Applies the D-037 rule, writes the results page and `artifacts/checkpoints/sft-selected-5c.json`; run it again after the judges below | seconds |
+| `uv run python scripts/faithfulness_sample.py --config configs/sft/report_qtypes.yaml`, then `evaluate_teacher.py` with `configs/sft/judge_faithfulness_before.yaml` and `_after.yaml` | The same 300 development replies from both models, judged by Qwen | ~6 min |
+| the three Phase 6 commands with `--config configs/eval/phase6c.yaml` | Scores the chosen model on the human test set with the D-032 protocol | ~5 min |
 
 ### Phase 6: evaluation
 

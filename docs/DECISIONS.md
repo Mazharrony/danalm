@@ -1397,3 +1397,100 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     with 3 requests per cell for Arabizi and mixed and 1 for Gulf Arabic (728 requests).
   - The top-up gets the same judge, reply check and assembly. It aims at the ~10,000 new
     examples of this decision.
+- **Result (2026-09-25; [results/phase5c_qtypes.md](results/phase5c_qtypes.md),
+  [results/phase6c_eval.md](results/phase6c_eval.md)):**
+  - **Data:** 10,039 new training examples. final-v5 has 34,302 (final-v4: 24,263); the
+    validation split stays at 957.
+
+    | Source | Examples with a reply | Label judge agreed | Added |
+    |---|---:|---:|---:|
+    | Bitext (English) | 2,839 of 2,877 candidates | 2,538 (89.4%) | 2,508 |
+    | MASSIVE (en-US, ar-SA) | 1,181 of 1,193 candidates | 1,069 (90.5%) | 940 (111 repeats) |
+    | Qwen grid, 1,248 requests | 5,305 kept of 9,923 written | 4,452 (83.9%) | 4,204 |
+    | Qwen top-up grid, 728 requests | 3,087 kept of 5,788 written | 2,504 (81.1%) | 2,387 |
+
+    - By variety: English +3,191, Gulf Arabic +2,846, Arabizi +1,982, mixed +1,763, Saudi
+      Arabic +257.
+    - The grid's own filters mostly dropped messages in the wrong script for their variety
+      (about 3,500 of 9,923) and replies that claimed an action (424).
+    - Amendment 2 worked for mixed: 3.8 kept examples per request in the top-up against 2.4 in
+      the main grid. Arabizi barely changed (3.9 against 3.7).
+    - The reply check marked 430 of 12,412 replies broken; 385 of them had passed the label
+      judge and were dropped. It caught 2 of its 8 planted broken replies, so it misses many.
+    - 21 near copies of test or dev messages were dropped.
+  - **Selection:** second pass, lr 1e-3, epoch 4.
+    - 4 of the 20 checkpoints passed both guards, all within 1 point on the question-type dev
+      set (91.5–92.1%). Real dev (93.8% for both epochs 4 and 5 of this run), then SFT
+      validation, decided.
+    - **Question-type dev set (1,298): 92.1%** (1,196), macro-F1 89.2%. The D-033 model: 65.4%
+      (849), macro-F1 60.6%. On the same messages the new model fixed 362 and broke 15 (exact
+      McNemar p < 10⁻⁸⁰). English 92.7% (64.5%); Saudi Arabic, from MASSIVE, 84.4% (77.8%).
+    - Caveat: this dev set comes from the same datasets as 3,448 of the new training examples.
+      It shows the new question types were learned, not how well new wording is handled.
+    - **Real dev set (804): 93.8%** (754); D-033: 94.4% (759). 18 fixed, 23 broken (p = 0.53).
+    - SFT validation: 93.9% (D-033: 93.1%). Gulf Arabic 94.8% (91.6%), Arabizi 92.1% (91.7%),
+      mixed 93.8% (93.8%), English 94.9% (95.6%).
+    - At confidence ≥ 0.701 it answers 97.3% of the real dev messages, with 95.0% accuracy.
+  - **Two label maps were wrong, as this result shows.** The dev set keeps the mapped labels
+    (amendment 1), so these count as errors:
+    - sim_or_number: 0 of 45. They are Bitext's activate_phone, deactivate_phone and
+      change_provider. The label judge agreed with none of the 86 training candidates with these
+      labels (70 plan_change, 16 other), so none was trained. The model says plan_change (30) or
+      other (10). Without them: 95.5% (1,196/1,253; D-033: 67.4%).
+    - order_status from MASSIVE's takeaway_query: 59 of 80. The judge agreed with 85 of 192
+      training candidates and called 106 other. The model says other for 21 dev messages, such
+      as "does this restaurant deliver".
+  - **Reply faithfulness** (the D-032 judge; the same 300 development messages, both models):
+
+    | | D-033 model | Chosen model | Good only for the new / only for the old | Exact McNemar p |
+    |---|---:|---:|---:|---:|
+    | answers | 86.0% | 93.3% | 35 / 13 | 0.002 |
+    | polite and clear | 90.7% | 93.3% | 22 / 14 | 0.24 |
+    | language | 100.0% | 98.7% | 0 / 4 | 0.13 |
+    | safe (no invented facts, no claimed actions) | 94.3% | 96.7% | 15 / 8 | 0.21 |
+    | **all four yes** | **79.0%** | **86.3%** | 46 / 24 | **0.012** |
+
+    - The gain is mostly replies that answer the question. The rise in "safe" is not
+      significant.
+    - The sample is English and Saudi Arabic. Gulf Arabic, Arabizi and mixed replies are not
+      measured here.
+  - **Test (English part, 64 messages, scored once with the D-032 protocol):**
+    - Intent accuracy **84.4%** (54/64), unchanged. 3 fixed (t0027, t0038, t0047), 3 broken
+      (t0006, t0054, t0061), p = 1.0. Macro-F1 85.1% (D-033: 85.5%).
+    - Replies judged good: 87.5% (56/64); D-033: 92.2% (59/64). 4 good only for the new model,
+      7 only for the old (p = 0.55).
+      - Two English replies contain Arabic letters (t0013, t0032); the D-035 guard sends both to
+        a person.
+      - Two contain broken words (t0028 "thederbill_inquiry", t0064 "algements").
+    - Coverage at the real-dev threshold (0.701): 92.2% answered (59/64), 89.8% of those right.
+      **The coverage bar is still missed.** 5 of the 10 errors have confidence ≥ 0.9 (D-033: 4).
+    - Latency, with power throttling off for the measuring process: 0.73 s per message on the
+      CPU (float32, 4 threads, 63 tokens per second), 0.40 s on the GPU. Answers average 46
+      tokens.
+  - **Script mixing got worse.** English development replies with Arabic letters: 28 of 2,012
+    for the chosen model, 10 for the D-033 model (p = 0.004).
+    - In every run the count rises with the epoch: 1–8 after epoch 1, 25–39 after epoch 5.
+    - The guard escalates these replies, so they are not sent, but the customer waits for a
+      person.
+  - **The owner's two messages** (not a measurement: PyTorch in float32, greedy decoding):
+    - Amazon refund: no invented damage any more. "I understand you need to know about your
+      refund request. Please share the details so I can pass this to the team for review."
+    - The D-033 model in Python did not invent it either. The demo's reply came from INT4 in the
+      browser, whose answers differ from Python's on 7 of 60 development messages (D-036).
+    - Bangladesh: **still wrong, and now confident.** It says balance_or_statement at 0.81,
+      above the threshold, so the reply would be sent. It is meaningless ("You can find your
+      current bank app by checking your statement…"). The D-033 model said transfer_issue at
+      0.34 and escalated.
+    - Of 6 more messages written for this check (none from the test set), the how-to and
+      off-topic ones improved. "can I use my debit card in London?" went from card_not_working
+      to loans_and_credit (0.85).
+  - **Other known issues:**
+    - 32 of the 3,191 new English replies (1.0%) still say an action is done ("we have
+      forwarded…"). In final-v4 it was 1.7%. No Arabic reply in final-v5 claims a finished
+      action ("تم …"); the filters removed them.
+    - detect_lang reads light Arabizi as English ("shu il status mal refund? tlabt min usbu3 w
+      ma wasal shay"). The guard then escalates a correct Arabic-script reply.
+  - **Time:** teacher 17:36–21:58 (the plan said 2.5–3 h, before the two amendments added
+    requests); GPU steps 21:58–23:29.
+  - **Not deployed yet:** the model in `artifacts/deploy`, the Hugging Face folder and the demo is
+    still D-033's INT4.

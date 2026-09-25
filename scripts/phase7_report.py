@@ -24,6 +24,15 @@ def pct(x: float | None) -> str:
     return "–" if x is None else f"{100 * x:.1f}%"
 
 
+def diff(dev: dict[str, Any], variant: str, split: str, limit: float) -> str:
+    """A variant's intent accuracy against onnx-fp32 on one set, in points and in messages, with
+    the D-034 limit in messages."""
+    a, b = dev["metrics"][f"onnx-{variant}"][split], dev["metrics"]["onnx-fp32"][split]
+    d = a["intent_accuracy"] - b["intent_accuracy"]
+    return (f"{100 * d:+.3f} points ({round(d * a['n']):+d} of {a['n']} messages; "
+            f"the limit is {-limit * a['n']:.2f})")  # fmt: skip
+
+
 def rate(k: int, n: int) -> str:
     lo, hi = wilson_interval(k, n)
     return f"{100 * k / n:.1f}% ({k}/{n}; {100 * lo:.0f}–{100 * hi:.0f}%)"
@@ -94,12 +103,13 @@ def main() -> None:
         f"- The D-034 rule for a quantized variant, on both sets: intent accuracy at most "
         f"{100 * rule['max_accuracy_drop']:.0f} point below onnx-fp32, valid JSON ≥ {pct(rule['min_valid_json'])}, "
         f"reply language ≥ {pct(rule['min_reply_lang'])}.",
-        *(f"  - {v}: **{'passes' if v in sel['passing'] else 'fails'}**"
-          + "".join(f"; {k}: " + ", ".join(f"{c.removesuffix('_ok').replace('_', ' ')} {'ok' if ok else 'NO'}"
-                                            for c, ok in checks.items()) for k, checks in sel["checks"][v].items())
+        *(f"  - {v}: **{'passes' if v in sel['passing'] else 'fails'}**. Intent accuracy against onnx-fp32: "
+          + "; ".join(f"{names.get(k, k).split(' (')[0]} {diff(dev, v, k, rule["max_accuracy_drop"])}" for k in sets) + ". "
+          + ("Valid JSON and reply language within the limits." if all(
+              c["valid_json_ok"] and c["reply_lang_ok"] for c in sel["checks"][v].values())
+             else "Valid JSON or reply language out of the limits.")
           for v in sel["checks"]),
-        f"- **Deployed: {sel['variant']}** ({sel['bytes'] / 2**20:.1f} MB, threshold {sel['threshold']:.3f}): "
-        f"{sel['reason']}.",
+        f"- **Deployed: {sel['variant']}**, threshold {sel['threshold']:.3f}: {sel['reason']}.",
         "",
     ]  # fmt: skip
     if lat:
@@ -160,7 +170,9 @@ def main() -> None:
                 + f". **All four yes: {rate(sum(j['good'] for j in judged), len(judged))}.**",
                 "",
             ]  # fmt: skip
-    Path(p["results_md"]).write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+    Path(p["results_md"]).write_text(
+        "\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n"
+    )
     print("\n".join(lines))
 
 

@@ -1195,3 +1195,29 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     development sets.
   - Each ONNX variant takes a few minutes.
   - The latency runs take about 15 minutes.
+- **Result on the development sets (2026-09-25; [results/phase7_deploy.md](results/phase7_deploy.md)),
+  committed before the test set is scored:**
+  - **Exactness.** The PyTorch KV-cache path and `onnx-fp32` gave answers identical to the
+    reference on all 1,761 development messages.
+  - **The reference** (PyTorch float32 on the CPU): 93.0% intent accuracy on the SFT validation
+    split and 94.15% on the real dev set. The bf16 GPU runs of D-033 gave 93.1% and 94.4%.
+  - **INT8** (100.8 MB): 93.0% and 93.91%, which is 2 messages fewer on the real dev set.
+  - **INT4** (78.1 MB): 93.21% and 93.16%, which is 8 messages fewer of 804 on the real dev set.
+    The limit was 8.04, so INT4 passes by less than one message.
+  - Both variants give 100% valid JSON and at least 99.9% reply language, so both pass.
+  - **INT4 is deployed**, as the smallest passing variant.
+  - **Replies change more than intents.** The quantized variants keep the reference's intent on
+    98–99% of the messages, but its exact answer on only 17–38%. The Qwen judge on the test
+    replies checks their quality.
+  - **Thresholds** (real dev set, 95% target): fp32 0.600, INT8 0.589, INT4 0.564.
+  - Rebuilding INT8 and INT4 with the refactored `danalm.model.quantize` gives byte-identical
+    files.
+  - **The development PC crashed during this run** (blue screen `HYPERVISOR_ERROR` at 14:36).
+    - The system log also shows earlier blue screens, machine-check errors from the CPU and a
+      fatal hardware error on 2026-09-23.
+    - The BIOS (0812, February 2023, microcode 0x10E) predates Intel's stability fixes for
+      13th- and 14th-generation CPUs; the owner may update it.
+    - The rerun reused the saved reference on the SFT validation split, with the same 16 threads
+      both times.
+    - The three float32 paths agree on every message, so no silent computation error shows in
+      these results.

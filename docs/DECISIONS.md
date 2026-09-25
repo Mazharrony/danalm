@@ -1221,3 +1221,26 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       both times.
     - The three float32 paths agree on every message, so no silent computation error shows in
       these results.
+
+## D-035 · Phase 7 · A reply-language guard in the predictor, added after the test run
+
+- **Why:** on the test set (D-034, scored once), INT4 gave three garbled replies out of 64.
+  - t0010 and t0064: Arabic words inside an English reply.
+  - t0013: a repetition loop that ended as invalid JSON; the service already escalates those.
+  - The development sets had shown none.
+  - The D-034 check could not see them. It detects the language of the whole reply, and a few
+    Arabic words in a mostly English reply still count as English.
+  - The model choice does not change: INT4 stays, as D-034 requires.
+- **Decision:** the predictor escalates an answer whose reply does not fit the customer's
+  language, instead of sending it.
+  - The message's language is detected with `detect_lang` on the normalized text.
+  - The reply must be in one of the D-023 reply languages for that language: English for
+    English; Gulf Arabic script for Arabic and Arabizi; Arabic or mixed for mixed.
+  - A reply to an English message may not contain any Arabic letter.
+  - A message without letters is not checked.
+- **Measurement:**
+  - The guard is applied to the saved predictions of every system. No model is re-run.
+  - On the development sets, its escalations are reported and listed. This is the false-alarm
+    estimate, since those sets did not motivate the guard.
+  - On the test set, its effect is shown too, but it is not an independent estimate, because the
+    test set revealed the problem.

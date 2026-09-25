@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>DanaLM browser parity</title>
+<style>
+  body { font: 14px/1.4 system-ui, sans-serif; margin: 16px; background: #fff; color: #111; }
+  table { border-collapse: collapse; margin-top: 8px; }
+  td, th { border: 1px solid #ccc; padding: 3px 6px; vertical-align: top; max-width: 520px; word-break: break-word; }
+</style>
+</head>
+<body>
+<h1>DanaLM: browser port vs Python</h1>
+<p>Serve the repository root (e.g. <code>python -m http.server 8766</code>), run
+<code>scripts/web_parity.py</code> first, then open <code>/web/parity.html</code>. Development
+messages only; the test set is never used.</p>
+<pre id="log">running…</pre>
+<table id="bad"></table>
+<script type="module">
+import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs";
+import { Tokenizer, normalize, detectLang, Predictor } from "./danalm.js";
+
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+const log = (s) => (document.getElementById("log").textContent += "\n" + s);
+const bad = [];
+const note = (kind, input, got, want) => bad.push([kind, input, got, want]);
+try {
+  const cases = await (await fetch("../artifacts/web-parity/cases.json")).json();
+  const base = `../artifacts/deploy/${cases.variant}/`;
+  const tokJson = await (await fetch(base + "tokenizer.json")).json();
+  const meta = await (await fetch(base + "danalm.json")).json();
+  const tok = new Tokenizer(tokJson);
+  const counts = { normalize: 0, lang: 0, encode: 0, decode: 0 };
+  for (const c of cases.texts) {
+    const norm = normalize(c.text, meta.normalize);
+    if (norm !== c.normalized) { counts.normalize++; note("normalize", c.text, norm, c.normalized); }
+    const lang = detectLang(c.normalized);
+    if (lang !== c.lang) { counts.lang++; note("lang", c.normalized, lang, c.lang); }
+    const ids = tok.encode(c.normalized);
+    if (JSON.stringify(ids) !== JSON.stringify(c.ids)) { counts.encode++; note("encode", c.normalized, ids.join(" "), c.ids.join(" ")); }
+    const dec = tok.decode(c.ids);
+    if (dec !== c.decoded) { counts.decode++; note("decode", c.ids.join(" "), dec, c.decoded); }
+  }
+  const n = cases.texts.length;
+  log(`text checks on ${n}: normalize ${n - counts.normalize}/${n} same, language ${n - counts.lang}/${n}, ` +
+      `encode ${n - counts.encode}/${n}, decode ${n - counts.decode}/${n}`);
+  const model = await (await fetch(base + "model.onnx")).arrayBuffer();
+  const p = await Predictor.create(ort, { model, tokenizer: tokJson, meta });
+  let sameIds = 0, sameIntent = 0, sameRoute = 0, maxConf = 0, ms = 0;
+  const limit = Number(new URLSearchParams(location.search).get("n")) || cases.predictions.length;
+  const preds = cases.predictions.slice(0, limit);
+  for (const [k, c] of preds.entries()) {
+    document.title = `parity: prediction ${k + 1} of ${preds.length}`;
+    await new Promise((r) => setTimeout(r, 0)); // yield, so the page stays responsive
+    const out = await p.predict(c.message);
+    ms += out.latency_ms;
+    const idsOk = JSON.stringify(out.generated_ids) === JSON.stringify(c.generated_ids);
+    sameIds += idsOk; sameIntent += out.intent === c.intent; sameRoute += out.route === c.route;
+    maxConf = Math.max(maxConf, Math.abs(out.confidence - c.confidence));
+    if (!idsOk || out.intent !== c.intent || out.route !== c.route) {
+      note("predict", c.message, `${out.intent} ${out.confidence} ${out.route} | ${out.reply}`, `${c.intent} ${c.confidence} ${c.route} | ${c.reply}`);
+    }
+  }
+  const m = preds.length;
+  log(`predictions on ${m}: same tokens ${sameIds}/${m}, same intent ${sameIntent}/${m}, same route ${sameRoute}/${m}, ` +
+      `largest confidence difference ${maxConf.toFixed(4)}, mean time ${(ms / m).toFixed(0)} ms ` +
+      `(${ort.env.wasm.numThreads ?? 1} thread(s), crossOriginIsolated=${self.crossOriginIsolated})`);
+  document.title = `parity: ${bad.length} differences`;
+} catch (err) {
+  log("ERROR " + err.stack);
+  document.title = "parity: error";
+}
+const table = document.getElementById("bad");
+table.innerHTML = "<tr><th>check</th><th>input</th><th>browser</th><th>python</th></tr>" +
+  bad.slice(0, 200).map((r) => "<tr>" + r.map((x) => `<td>${String(x).replace(/</g, "&lt;")}</td>`).join("") + "</tr>").join("");
+</script>
+</body>
+</html>

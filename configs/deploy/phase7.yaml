@@ -41,3 +41,10 @@ hf_model:                      # Phase 8, scripts/build_hf_model.py (upload is t
   dir: ${paths.artifacts_dir}/hf-model
   model_card: docs/MODEL_CARD.md
   variants: [int4, int8, fp32]   # the deployed variant first
+
+web_parity:                    # Phase 8, scripts/web_parity.py + web/parity.html (the browser port)
+  variant: int4
+  seed: 42
+  per_set: 150                 # development messages from each set for the text checks
+  predict: 60                  # of those, full predictions compared token by token
+  out: ${paths.artifacts_dir}/web-parity/cases.json

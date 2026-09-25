@@ -1295,3 +1295,35 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   - A Gulf Arabic order question was answered on the device with `order_status` and a fluent
     Arabic reply.
   - An English message with a phone number came back masked as `<PHONE>`.
+
+## D-036 · Phase 8 · An in-browser demo instead of a Gradio Space
+
+- **Why:** Hugging Face now needs a paid PRO plan to host Gradio or Docker Spaces. Static Spaces
+  are free. On 2026-09-25 the owner chose an in-browser demo over paying.
+- **Decision:** a static page, `web/index.html`, downloads the INT4 model from the model
+  repository once and runs it with ONNX Runtime Web 1.30.0 (WebAssembly). That is the same
+  version as the Python runtime.
+  - `web/danalm.js` ports the torch-free Python path:
+    - normalization and PII masking;
+    - the byte-level BPE tokenizer;
+    - KV-cache greedy decoding and the 21-intent confidence;
+    - the D-035 guard.
+  - Python's Unicode `\w`, `\d`, `\s` and `\b` are written out, since JavaScript's differ.
+  - The Space sends cross-origin-isolation headers, so the runtime can use threads.
+  - The Gradio app (`space/`) stays in the repository for local runs.
+- **Parity with Python** (`scripts/web_parity.py`, `web/parity.html`; development messages only):
+  - **Text: 314 of 314 identical**, for the normalized text, the language tag, the token ids and
+    the decoded text. The set is 300 development messages and 14 crafted strings: every PII form,
+    Arabic-Indic digits, repeated characters, unusual spaces and emoji.
+  - **Predictions** (60 development messages, INT4):
+    - same intent 60/60;
+    - same generated answer 53/60;
+    - same route 59/60;
+    - confidence at most 0.053 apart.
+  - The WebAssembly INT4 kernels round differently from the native ones. So a few replies differ
+    in wording, and one route near the threshold flipped.
+- **Checked by hand:** the page loaded the model from the Hugging Face repository in 7 s, with
+  cross-origin isolation on. It answered the Gulf Arabic, Arabizi and English examples as the
+  Python demo did, and masked an email and a phone number.
+  - Time: about 1.3 s per message in the app's hidden browser pane with 4 threads. The native CPU
+    takes 0.25 s.

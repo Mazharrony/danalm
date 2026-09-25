@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DanaLM demo</title>
+<meta name="description" content="A 62M-parameter customer-service model for the UAE, running entirely in your browser.">
+<style>
+  :root { --bg: #f7f7f5; --card: #fff; --ink: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
+          --accent: #1f5f8b; --ok: #1e7b4f; --warn: #a15c00; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --card: #1f1f1d; --ink: #ecebe6; --muted: #a3a29b; --line: #34332f;
+            --accent: #7fb6de; --ok: #6fcf9a; --warn: #f0b35a; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { margin: 0 0 4px; font-size: 28px; }
+  .sub { color: var(--muted); margin: 0 0 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 12px 0; }
+  textarea { width: 100%; min-height: 84px; font: inherit; padding: 10px; border-radius: 8px;
+             border: 1px solid var(--line); background: var(--bg); color: var(--ink); resize: vertical; }
+  button { font: inherit; border-radius: 8px; border: 1px solid var(--line); background: var(--bg);
+           color: var(--ink); padding: 6px 10px; cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; padding: 8px 18px; }
+  button:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+  .examples button { font-size: 14px; }
+  .status { color: var(--muted); font-size: 14px; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; margin: 0; }
+  dt { color: var(--muted); }
+  dd { margin: 0; overflow-wrap: anywhere; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 14px; }
+  .on_device { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+  .escalate { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+  .small { font-size: 14px; color: var(--muted); }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<main>
+  <h1>DanaLM <span lang="ar">(دانة)</span></h1>
+  <p class="sub">A 62M-parameter customer-service model for the UAE, trained from scratch. It runs
+    entirely in your browser: nothing you type leaves this page.</p>
+
+  <div class="card">
+    <label for="msg"><strong>Customer message</strong> (Gulf Arabic, English, Arabizi or a mix)</label>
+    <textarea id="msg" dir="auto" placeholder="e.g. my card got stuck in the ATM machine this morning"></textarea>
+    <div class="row">
+      <button id="go" class="primary" disabled>Answer</button>
+      <span id="status" class="status">Loading…</span>
+    </div>
+    <div class="row examples" id="examples"></div>
+  </div>
+
+  <div class="card" id="out" hidden>
+    <dl>
+      <dt>Intent</dt><dd id="o-intent"></dd>
+      <dt>Reply</dt><dd id="o-reply" dir="auto"></dd>
+      <dt>Confidence</dt><dd id="o-conf"></dd>
+      <dt>Route</dt><dd id="o-route"></dd>
+      <dt>Time</dt><dd id="o-time"></dd>
+      <dt>Masked message</dt><dd id="o-masked" dir="auto"></dd>
+    </dl>
+  </div>
+
+  <div class="card small">
+    <p><strong>How it works.</strong> Your browser downloads the 4-bit ONNX model once (about 80 MB,
+      then cached) and runs it with ONNX Runtime Web. The model writes a JSON answer, an intent and
+      a short reply. It also scores all 21 intents; the chosen intent's share is the confidence. An
+      answer is used on the device only if it is valid, its reply is in the customer's language and
+      its confidence clears a threshold fixed on held-out real messages. Otherwise it goes to a person
+      or a bigger model.</p>
+    <p><strong>Masked message.</strong> Phone numbers, emails, Emirates IDs, card numbers and IBANs
+      are masked before the model sees the text; only the masked text would ever leave a device.</p>
+    <p><strong>Limits.</strong> English was checked on 64 real messages (84% intent accuracy). The
+      Gulf Arabic, Arabizi and mixed parts have not been checked by a native speaker yet. Replies come
+      from a small model and can be wrong. Do not enter real personal data.</p>
+    <p><a href="https://github.com/Mazharrony/danalm">Code, data sources and every result</a> ·
+      <a href="https://huggingface.co/Mazharrony/danalm">Model card</a></p>
+  </div>
+</main>
+<script type="module">
+import * as ort from "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/ort.wasm.min.mjs";
+import { Predictor } from "./danalm.js";
+
+ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.30.0/dist/";
+const EXAMPLES = [  // written for the demo; none is a test-set message
+  "my card got stuck in the ATM machine this morning",
+  "وين طلبي؟ صار له ساعتين وما وصل",
+  "3andi mushkila fil card, ma yishtaghil",
+  "I want to talk to a real person please",
+  "how much do you charge for sending money to India?",
+  "ابي اغير رقم التوصيل للطلب",
+];
+const params = new URLSearchParams(location.search);
+const BASE = params.get("model") || "https://huggingface.co/Mazharrony/danalm/resolve/main/int4/";
+const $ = (id) => document.getElementById(id);
+const status = (s) => ($("status").textContent = s);
+
+async function fetchCached(url, onProgress) {
+  // the model is fetched once, then served from the browser's cache
+  let cache = null;
+  try { cache = await caches.open("danalm-v1"); } catch { /* no Cache API: fetch every time */ }
+  const hit = cache && (await cache.match(url));
+  if (hit) return hit.arrayBuffer();
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
+  const total = Number(res.headers.get("content-length")) || 0;
+  const reader = res.body.getReader();
+  const chunks = [];
+  let got = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    got += value.length;
+    onProgress(got, total);
+  }
+  const buf = new Uint8Array(got);
+  let at = 0;
+  for (const c of chunks) { buf.set(c, at); at += c.length; }
+  if (cache) { try { await cache.put(url, new Response(buf)); } catch { /* quota: fine */ } }
+  return buf.buffer;
+}
+
+let predictor;
+try {
+  const t0 = performance.now();
+  const [tokenizer, meta] = await Promise.all(["tokenizer.json", "danalm.json"].map(
+    async (f) => (await fetch(BASE + f)).json()));
+  const model = await fetchCached(BASE + "model.onnx", (got, total) =>
+    status(`Downloading the model: ${(got / 2 ** 20).toFixed(0)}` + (total ? ` of ${(total / 2 ** 20).toFixed(0)} MB` : " MB")));
+  status("Starting the model…");
+  predictor = await Predictor.create(ort, { model, tokenizer, meta });
+  status(`Ready in ${((performance.now() - t0) / 1000).toFixed(1)} s. Runs on your device.`);
+  $("go").disabled = false;
+} catch (err) {
+  status("Could not load the model: " + err.message);
+}
+
+for (const e of EXAMPLES) {
+  const b = document.createElement("button");
+  b.textContent = e;
+  b.dir = "auto";
+  b.onclick = () => { $("msg").value = e; answer(); };
+  $("examples").append(b);
+}
+
+async function answer() {
+  const msg = $("msg").value.trim();
+  if (!predictor || !msg) return;
+  $("go").disabled = true;
+  status("Thinking…");
+  await new Promise((r) => setTimeout(r, 30)); // let the page repaint before the model runs
+  try {
+    const out = await predictor.predict(msg);
+    $("o-intent").textContent = out.intent ?? "(no valid answer)";
+    $("o-reply").textContent = out.reply ?? "";
+    $("o-conf").textContent = out.confidence.toFixed(2);
+    $("o-route").innerHTML = `<span class="badge ${out.route}">${out.route === "on_device" ? "answer on the device" : "escalate"}</span>` +
+      (out.valid_json && !out.reply_fits ? " (reply not in the customer's language)" : "");
+    $("o-time").textContent = `${Math.round(out.latency_ms)} ms`;
+    $("o-masked").textContent = out.message_masked;
+    $("out").hidden = false;
+    status("Ready. Runs on your device.");
+  } catch (err) {
+    status(err.message === "message too long" ? "That message is too long for this demo." : "Error: " + err.message);
+  }
+  $("go").disabled = false;
+}
+$("go").onclick = answer;
+</script>
+</body>
+</html>

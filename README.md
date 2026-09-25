@@ -428,6 +428,18 @@ docker run --rm -p 8000:8000 -v "$PWD/artifacts/deploy/int4:/model:ro" danalm-se
 uv run --group demo python scripts/build_space.py --config configs/deploy/phase7.yaml
 ```
 
+**Model on Hugging Face:** [Mazharrony/danalm](https://huggingface.co/Mazharrony/danalm), with the
+model card and the INT4, INT8 and fp32 graphs.
+
+**In-browser demo (D-036):** `web/` is a static page. It downloads the INT4 model once and runs it
+with ONNX Runtime Web, so nothing typed leaves the browser. `web/danalm.js` ports the Python
+inference path; `web/parity.html` compares it with Python:
+- the text processing is identical on 314 of 314 inputs;
+- the intents are identical on 60 of 60 predictions.
+
+To try it locally, serve the repository root with any static file server and open
+`/web/index.html`.
+
 `POST /predict` returns the intent, the reply, the confidence and a route: `on_device` or
 `escalate`. It also returns the PII-masked message, which is the only text that should leave the
 device. `build_space.py` assembles the Hugging Face Space in `artifacts/space`, where

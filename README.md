@@ -15,7 +15,7 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
 | 5. SFT | done | Valid JSON 100%, intent accuracy 92.9% on the SFT validation split |
-| 6. Evaluation | next: 64 English test messages are ready; the Arabic parts need a native speaker | |
+| 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 56% (CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
 | 7. Quantization and deployment | later | |
 | 8. Presentation | later | |
 
@@ -66,8 +66,18 @@ Results so far:
     come from synthetic validation data. The honest score comes from the human test set in
     Phase 6 ([results](docs/results/phase5_sft.md)).
 
-Open: **the Arabic, Arabizi and mixed parts of the human test set**. They need a native Gulf
-Arabic speaker. The 64-message English part is ready (see [Test data](#test-data)).
+- **Evaluation (Phase 6, English part):** on the 64 human test messages DanaLM reaches 56.2%
+  intent accuracy, with 100% valid JSON and 100% replies in the right language. The
+  CAMeLBERT-mix classifier reaches 46.9% and Qwen3.5-35B-A3B zero-shot 89.1%
+  ([results](docs/results/phase6_eval.md)).
+  - It meets three of the four D-030 bars. It misses coverage: its confidence is not
+    calibrated on real messages.
+  - The large drop from the synthetic validation split (93%) shows the main weakness: the
+    synthetic training data does not match how real customers write.
+  - Latency: 0.63 s per message on the CPU (float32, 4 threads), before any optimisation.
+
+Open: **the Arabic, Arabizi and mixed parts of the human test set** need a native Gulf Arabic
+speaker (see [Test data](#test-data)).
 
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
 choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
@@ -239,6 +249,17 @@ Stop the teacher server before the training steps; the Qwen steps start it thems
 | `uv run python scripts/sft.py --config configs/sft/train.yaml train.lr=3.0e-4 run_name=sft-r1-lr3e-4` | One SFT run (5 epochs, evaluated after each) | ~6 min |
 | `uv run python scripts/sft_report.py --config configs/sft/report.yaml` | Applies the D-029 rule to all runs, writes the results page and `artifacts/checkpoints/sft-selected.json` | seconds |
 | `uv run python scripts/baseline_camelbert.py --config configs/eval/baseline_camelbert.yaml` | The CAMeLBERT-mix intent classifier baseline (Phase 6, D-027) | ~2 min |
+
+### Phase 6: evaluation
+
+The protocol (D-032) was committed before the test set was scored. The scripts refuse a test
+file whose SHA-256 has changed.
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run python scripts/evaluate_test.py --config configs/eval/phase6.yaml` | Scores DanaLM and CAMeLBERT on the human test set; latency and memory on CPU and GPU | ~2 min |
+| `uv run python scripts/evaluate_teacher.py --config configs/eval/phase6.yaml` | Qwen zero-shot intents and Qwen's judgement of DanaLM's replies (starts the teacher) | ~4 min |
+| `uv run python scripts/phase6_report.py --config configs/eval/phase6.yaml` | Results page: intervals, the D-030 bars, errors, all replies | seconds |
 
 ## Repository layout
 

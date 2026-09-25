@@ -932,3 +932,35 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   directly). The smoke run also showed that Qwen sometimes misnumbers its answer lines. A
   message it leaves unlabelled counts as wrong, as the protocol says, and the report shows the
   count.
+- **Result (2026-09-25; [results/phase6_eval.md](results/phase6_eval.md)). English part only,
+  64 messages:**
+
+  | System | Intent accuracy (95% interval) | Macro-F1 |
+  |---|---:|---:|
+  | DanaLM (62M) | **56.2%** (44–68%) | 57.8% |
+  | CAMeLBERT-mix classifier (110M) | 46.9% (35–59%) | 46.4% |
+  | Qwen3.5-35B-A3B, zero-shot | 89.1% (79–95%) | 90.3% |
+
+  - DanaLM gives valid JSON 100% of the time and replies in the right language 100% of the time.
+    Qwen judged 89.1% of its replies good.
+  - The macro-F1 difference between DanaLM and CAMeLBERT is +11.5 points (interval +1.0 to
+    +22.0). Against Qwen it is −32.4 points (interval −46.7 to −20.8).
+  - **Bars (English only):**
+    - valid JSON: met;
+    - macro-F1 within 3 points of CAMeLBERT: met;
+    - reply language: met;
+    - **coverage: missed.** At the threshold set on the SFT validation split (0.612), DanaLM
+      answers 85.9% of the messages, but only 61.8% of those answers are right. Its confidence
+      is not calibrated for real messages.
+  - **The main finding:** both small models fall from about 93% on the synthetic validation
+    split to 47–56% on real messages.
+    - The Qwen-written training data does not prepare them for short, US-style banking
+      questions such as "what have i spent things on" or "this charge is bs".
+    - The weakest intents are unrecognized_transaction (1 of 7 right) and balance_or_statement
+      (1 of 6).
+    - Many errors land in `other` with high confidence and an off-topic reply.
+  - **Sensitivity**, without the 3 disputed rows: DanaLM 55.7%, CAMeLBERT 47.5%, Qwen 91.8%.
+  - **Latency**, batch 1 with no KV cache yet:
+    - CPU (float32, 4 threads): median 0.63 s, p95 0.92 s. GPU: median 0.37 s.
+    - The weights are 237 MB. The process peaks at 1.2 GB, of which 0.93 GB was there before the
+      model loaded.

@@ -24,11 +24,14 @@ def main() -> None:
     cfg = config_from_cli(__doc__)
     p = cfg["phase7"]
     out = Path(p["space_dir"])
-    if out.exists():  # a previous build of this script only: never an unrelated folder
+    if out.exists() and any(
+        out.iterdir()
+    ):  # only an empty folder or a previous build of this script
         if not (out / "app.py").exists() or not (out / "model" / "danalm.json").exists():
             raise SystemExit(f"{out} exists and is not a Space build; choose another space_dir")
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+        for child in out.iterdir():  # empty it; the folder itself may be in use
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+    out.mkdir(parents=True, exist_ok=True)
     for name in ("app.py", "README.md", "requirements.txt"):
         shutil.copyfile(Path("space") / name, out / name)
     ignore = shutil.ignore_patterns("__pycache__")

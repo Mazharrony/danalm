@@ -24,14 +24,17 @@ def main() -> None:
     cfg = config_from_cli(__doc__)
     h = cfg["hf_model"]
     out = Path(h["dir"])
-    if out.exists():  # a previous build of this script only: never an unrelated folder
+    if out.exists() and any(
+        out.iterdir()
+    ):  # only an empty folder or a previous build of this script
         if (
             not (out / "README.md").exists()
             or not (out / h["variants"][0] / "danalm.json").exists()
         ):
             raise SystemExit(f"{out} exists and is not a model build; choose another hf_model.dir")
-        shutil.rmtree(out)
-    out.mkdir(parents=True)
+        for child in out.iterdir():  # empty it; the folder itself may be in use
+            shutil.rmtree(child) if child.is_dir() else child.unlink()
+    out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(h["model_card"], out / "README.md")
     ignore = shutil.ignore_patterns("__pycache__")
     for v in h["variants"]:

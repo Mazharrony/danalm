@@ -878,3 +878,48 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
 - **Why:** the model's clearest weaknesses are in the data: broken replies, thin mixed and
   Arabizi cells, and intents that get confused. Pretraining loss was also still falling at the
   end of the first pass.
+
+## D-032 · Phase 6 · Evaluation protocol for the human test set, fixed before scoring
+
+- **Decision:** the owner said "go" for Phase 6 on 2026-09-25. Everything below is committed
+  before any test-set result is computed. The test set is scored once with this protocol, and
+  nothing is tuned on it afterwards.
+  - **Test set:** `data/test/test_set.jsonl`, 64 English messages over 10 intents, labelled by
+    the owner (MR). SHA-256 `e6961fd2…48397`. The overlap check reports 0 overlaps.
+    - The Gulf Arabic, Arabizi and mixed parts do not exist yet. So this is **a partial
+      evaluation, English only**, and the D-030 bars can only be judged for English.
+  - **Model:** the Phase 5 choice (D-029): `sft-r1-lr3e-4/epoch_3.pt`. It uses greedy decoding
+    with at most 96 new tokens, the SFT normalization, and no constrained decoding.
+  - **Metrics:**
+    - valid-JSON rate;
+    - intent accuracy, and macro-F1 over the intents in the test set (an invalid answer counts
+      as wrong);
+    - reply-language rate (D-029 rule);
+    - coverage at the confidence threshold fixed on the SFT validation split, 0.612 (D-030).
+  - **Baselines:**
+    - CAMeLBERT-mix at its best epoch on the SFT validation split (D-027, D-031 G).
+    - Qwen3.5-35B-A3B zero-shot. It uses the Phase 2 label-judge prompt (the 21 intents with
+      their descriptions) at temperature 0, 20 messages per request.
+  - **Uncertainty:** 64 messages is a small sample.
+    - Every rate is reported with a Wilson 95% interval.
+    - The difference in macro-F1 between DanaLM and each baseline is reported with a paired
+      bootstrap 95% interval: 10,000 resamples, seed 42.
+    - A D-030 bar counts as met when the point estimate meets it. The interval is shown next to
+      it.
+  - **Reply quality:**
+    - Qwen judges each valid DanaLM reply on four yes/no questions: does it answer the
+      message; is it polite and clear; is it in the customer's language; does it avoid
+      invented facts and claims that something was done? A reply is "good" when all four are
+      yes.
+    - Caveat: Qwen wrote DanaLM's training replies, so it may be lenient.
+    - Every reply is listed on the results page for the owner's manual spot check.
+  - **Latency and memory:**
+    - Per message, batch 1, with the current decoder (no KV cache yet; that is Phase 7).
+    - On the CPU: float32, 4 threads, like a small device. On the GPU: bf16.
+    - Median and p95 over the 64 messages, after 3 warm-up messages.
+    - Memory: the size of the weights, peak process memory on the CPU, and peak allocated
+      memory on the GPU.
+  - **Sensitivity:** a separate audit disagreed with the owner's label on rows 28, 57 and 58.
+    Accuracy is also reported with those three rows left out. This is only a sensitivity line;
+    the owner's labels stay the primary result.
+  - **Error analysis:** every message DanaLM gets wrong is listed with its answer.

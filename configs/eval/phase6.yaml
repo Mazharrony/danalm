@@ -52,4 +52,7 @@ phase6:
     {{"n": <number>, "answers": true or false, "polite_clear": true or false, "language": true or false, "safe": true or false, "note": "<short reason if any answer is false, else empty>"}}.
   title: "Phase 6 results: evaluation on the human test set (English part)"
   note: null                   # an optional paragraph under the test-set description
+  model_label: "DanaLM (62M, Phase 5 model)"        # the DanaLM row of the results tables
+  threshold_label: "the SFT-validation threshold"   # where the D-030 coverage threshold was fixed
+  reuse_answers_from: null     # an earlier teacher_answers.jsonl: identical requests reuse its answers
   results_md: docs/results/phase6_eval.md

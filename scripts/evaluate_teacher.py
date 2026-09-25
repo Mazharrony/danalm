@@ -6,7 +6,9 @@ Run scripts/evaluate_test.py first (it writes danalm_predictions.jsonl). Every s
 normalized message. The zero-shot baseline uses the Phase 2 label-judge prompt and settings. The
 reply judge answers four yes/no questions per reply; a reply is "good" when all four are yes.
 Writes teacher_predictions.jsonl and reply_judge.jsonl to phase6.out_dir. Answers are saved as they
-arrive (teacher_answers.jsonl), so a re-run resumes.
+arrive (teacher_answers.jsonl), so a re-run resumes. With phase6.reuse_answers_from, a request that
+is identical to one in that earlier log takes its answer (a later model's evaluation then compares
+with the very same zero-shot run).
 """
 
 import hashlib
@@ -64,6 +66,11 @@ def main() -> None:
         requests.append((p["judge_system"], p["judge_prompt"].format(n=len(b), items=items)))
     keys = [hashlib.md5((s + "\n" + u).encode("utf-8")).hexdigest() for s, u in requests]
     log = AnswerLog(out / "teacher_answers.jsonl", keys)
+    if p["reuse_answers_from"]:  # the same request answered in an earlier run is not asked again
+        earlier = {row["key"]: row["answer"] for row in read_jsonl(p["reuse_answers_from"])}
+        for i, key in enumerate(keys):
+            if i not in log.done and key in earlier:
+                log.add(i, key, answer=earlier[key], reused_from=p["reuse_answers_from"])
     todo = [i for i in range(len(requests)) if i not in log.done]
     print(f"{len(requests)} requests; {len(log.done)} already answered", flush=True)
     try:

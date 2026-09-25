@@ -119,8 +119,9 @@ def main() -> None:
                               ev, autocast)  # fmt: skip
     for r, pr in zip(rows, preds, strict=True):
         pr["id"] = r["id"]
+    # None: no threshold reached the target accuracy on the development set, so nothing is answered
     threshold = selected["metrics"]["coverage"]["threshold"]
-    covered = [pr for pr in preds if pr["conf"] >= threshold]
+    covered = [pr for pr in preds if threshold is not None and pr["conf"] >= threshold]
     metrics["coverage_at_dev_threshold"] = {
         "threshold": threshold, "answered": len(covered), "coverage": len(covered) / len(preds),
         "accuracy": (sum(pr["pred_intent"] == pr["intent"] for pr in covered) / len(covered)

@@ -44,7 +44,7 @@ def main() -> None:
     metrics = json.loads((out / "test_metrics.json").read_text(encoding="utf-8"))
     dana = read_jsonl(out / "danalm_predictions.jsonl")
     systems = {
-        "DanaLM (62M, Phase 5 model)": [x["pred_intent"] for x in dana],
+        p["model_label"]: [x["pred_intent"] for x in dana],
         "CAMeLBERT-mix classifier (110M)": [x["pred_intent"] for x in read_jsonl(out / "camelbert_predictions.jsonl")],
         "Qwen3.5-35B-A3B, zero-shot": [x["pred_intent"] for x in read_jsonl(out / "teacher_predictions.jsonl")],
     }  # fmt: skip
@@ -68,7 +68,8 @@ def main() -> None:
         ("Intent macro-F1 vs CAMeLBERT", f"within {100 * bars['macro_f1_gap']:.0f} points",
          f"{100 * gap['diff']:+.1f} points (95% interval {100 * gap['lo']:+.1f} to {100 * gap['hi']:+.1f})",
          gap["diff"] >= -bars["macro_f1_gap"]),
-        ("Coverage at the SFT-validation threshold " + f"({cov['threshold']:.3f})",
+        (f"Coverage at {p['threshold_label']} ("
+         + ("none reached the target" if cov["threshold"] is None else f"{cov['threshold']:.3f}") + ")",
          f"≥ {100 * bars['coverage']:.0f}% answered, ≥ {100 * bars['coverage_accuracy']:.0f}% of them right",
          f"{100 * cov['coverage']:.1f}% answered ({cov['answered']}/{n}), "
          + ("–" if cov["accuracy"] is None else f"{100 * cov['accuracy']:.1f}% right"),

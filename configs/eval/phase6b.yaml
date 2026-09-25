@@ -14,5 +14,9 @@ phase6:
     (D-033), the same datasets whose test splits the English test set comes from. Near copies of
     the test messages were removed from training, but part of the English gain comes from the
     shared style. The Gulf Arabic, Arabizi and mixed test parts remain the real check. Phase 6's
-    first result is in [phase6_eval.md](phase6_eval.md).
+    first result is in [phase6_eval.md](phase6_eval.md); the CAMeLBERT and Qwen rows are the same
+    systems (Qwen's zero-shot answers are reused from that run, the same requests).
+  model_label: "DanaLM (62M, real-message round)"
+  threshold_label: "the real-dev threshold"
+  reuse_answers_from: ${paths.artifacts_dir}/eval/phase6/teacher_answers.jsonl   # Qwen's zero-shot intents: identical requests
   results_md: docs/results/phase6b_eval.md

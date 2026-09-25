@@ -1221,6 +1221,42 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       both times.
     - The three float32 paths agree on every message, so no silent computation error shows in
       these results.
+- **Result on the human test set** (English, 64 messages; scored once per system after the
+  choice was committed):
+
+  | System | Intent accuracy (95% interval) | Valid JSON | Reply language |
+  |---|---:|---:|---:|
+  | PyTorch float32 (CPU) | 85.9% (75–92%) | 100% | 100% |
+  | ONNX fp32 | 85.9% (75–92%) | 100% | 100% |
+  | ONNX INT8 | 82.8% (72–90%) | 100% | 100% |
+  | **ONNX INT4 (deployed)** | **84.4% (74–91%)** | 98.4% | 96.9% |
+
+  - Phase 6b scored the same model in bf16 on the GPU at 84.4%.
+  - **INT4 gave three broken answers:**
+    - t0010 and t0064: Arabic words inside English replies;
+    - t0013: a repetition loop that ended as invalid JSON.
+  - D-034's reply-language check could not see the first two. D-035 answers that.
+  - Qwen judged 87.3% (55/63) of INT4's valid replies good on all four questions; the same model
+    unquantized got 92.2% in Phase 6b.
+  - At its dev threshold, INT4 answers 93.8% of the test messages, and 88.3% of those answers
+    are right. The D-030 coverage bar (95% right) is still missed.
+- **Latency and memory** (batch 1 on the CPU, 100 development messages, each system in its own
+  process, power throttling off for that process):
+  - **Against D-032's setting** (PyTorch float32, no cache, 4 threads), INT4 is:
+    - 6.7× faster per answer: 0.118 s instead of 0.788 s;
+    - 3.9× faster for the full prediction with the confidence: 0.251 s instead of 0.972 s;
+    - 4.7× smaller in peak memory: 252 MB instead of 1,190 MB;
+    - 3× smaller on disk: 78 MB instead of 237 MB.
+  - **With 1 thread**, INT4 takes 0.159 s per answer and 0.448 s with the confidence (D-032's
+    setting: 2.115 s and 2.765 s).
+  - The KV cache alone makes PyTorch 2.3× faster (0.350 s per answer). ONNX Runtime fp32 takes
+    0.284 s.
+  - **A trade-off the rule did not weigh:** INT8 is faster than INT4 for the full prediction
+    (0.188 s with 4 threads, 0.246 s with 1 thread). INT4's kernel is slower on the batched
+    21-intent scoring step. The rule ranks by size first, and 101 MB against 78 MB is not a
+    tie.
+- **What to change next time:** judge reply quality (the D-035 guard, or the Qwen judge on
+  development replies) and full-prediction latency before choosing a variant, not after.
 
 ## D-035 · Phase 7 · A reply-language guard in the predictor, added after the test run
 
@@ -1244,3 +1280,18 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     estimate, since those sets did not motivate the guard.
   - On the test set, its effect is shown too, but it is not an independent estimate, because the
     test set revealed the problem.
+- **Result** ([results/phase7_deploy.md](results/phase7_deploy.md), applied to the saved
+  predictions):
+  - On the development sets it rejects:
+    - 2 of 1,761 replies of the float32 model;
+    - 6 of INT8's;
+    - 2 of INT4's.
+  - Each of those replies is garbled mixed-script text, e.g. "the reverse of the lastدرءrestaurant".
+    So even the unquantized model occasionally produces them, and no false alarm was seen.
+  - The answers moved from "on the device" to "escalate" are at most 3 per set. The accuracy of
+    the remaining on-device answers does not change.
+  - On the test set it rejects INT4's t0010 and t0064 and INT8's t0064.
+- **Checked by hand in the local Gradio demo** (INT4, from the assembled Space folder):
+  - A Gulf Arabic order question was answered on the device with `order_status` and a fluent
+    Arabic reply.
+  - An English message with a phone number came back masked as `<PHONE>`.

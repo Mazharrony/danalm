@@ -19,30 +19,38 @@ How it is built:
 
 | | DanaLM | For comparison |
 |---|---|---|
-| Size | 62.1M parameters, 237 MB in float32 | CAMeLBERT-mix classifier: 110M; Qwen3.5-35B-A3B |
-| Valid JSON | **100%** | — |
-| Reply in the customer's language | **100%** | — |
-| Intent accuracy, 64 real English test messages | **84%** (56% before real training data) | CAMeLBERT 47%, Qwen zero-shot 89% |
-| Intent accuracy, 804 held-out real messages (dev set) | 94% | the model before real training data: 66% |
+| Size | 62.1M parameters; deployed as a **78 MB INT4 ONNX model**, no PyTorch needed | CAMeLBERT-mix classifier: 110M; Qwen3.5-35B-A3B |
+| Intent accuracy, 64 real English test messages | **84%** with the deployed INT4, 86% in float32 (56% before real training data) | CAMeLBERT 47%, Qwen zero-shot 89% |
+| Intent accuracy, 804 held-out real messages (dev set) | 93% INT4, 94% float32 | the model before real training data: 66% |
 | Intent accuracy, synthetic validation set (957) | 93% | CAMeLBERT 93% |
-| CPU speed (4 threads, not optimised yet) | 0.63 s per message, measured on the model before real training data | — |
+| Valid JSON / reply in the customer's language, test | 98% / 97% INT4; 100% / 100% float32 | — |
+| CPU time per message, 4 threads | **0.12 s** for the answer, 0.25 s with the confidence (was 0.79 s and 0.97 s) | — |
+| Peak memory | **252 MB** (was 1,190 MB with PyTorch) | — |
 
 The first model, trained only on teacher-written messages, fell from 93% on synthetic data to
 56% on real messages. Training on 2,921 real, openly licensed customer messages (D-033) raised it
 to 84%, close to the 35B teacher's 89%. Part of that gain is style the test messages share with
 the new training data, since both come from the same two public datasets.
 
+Phase 7 made it deployable:
+- A KV cache and ONNX Runtime, then quantization, made it 6.7× faster per answer and 4.7× lighter
+  in memory.
+- It runs as a FastAPI service, a Docker image and a Gradio demo.
+
 What is still open:
 
 - **Gulf Arabic, Arabizi and mixed test messages.** Those parts of the test set need a native
   speaker, and they are the real check.
-- **Confidence.** At the chosen threshold, 87% of the answered test messages are right, short of
+- **Confidence.** At the chosen threshold, 88% of the answered test messages are right, short of
   the 95% bar.
-- **Latency.** The current model writes about 20% longer answers than the one measured above.
+- **Garbled replies.** A few replies mix scripts, e.g. "…the lastدرءrestaurant…". That happened in 2 of
+  1,761 development replies, in float32 and INT4 alike, and in 2 of INT4's 64 test replies. A
+  guard in the service escalates them instead of sending them (D-035).
 
 Next steps:
 
-1. Quantize and deploy (Phase 7), and measure latency again there.
+1. Presentation (Phase 8): a README with an architecture diagram, a model card, and publishing on
+   Hugging Face.
 2. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set.
 3. Make the confidence trustworthy on real messages.
 
@@ -57,7 +65,7 @@ Next steps:
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
 | 5. SFT | done; a second round added real messages (D-033) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages |
 | 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
-| 7. Quantization and deployment | later | |
+| 7. Quantization and deployment | done | INT4 ONNX, 78 MB: 0.12 s per answer on 4 CPU threads (6.7× faster), 84% on the English test; FastAPI, Docker, CI, Gradio demo |
 | 8. Presentation | later | |
 
 Results by phase:
@@ -136,8 +144,27 @@ Results by phase:
   - Three of the four D-030 bars are met. Coverage is still missed: at the threshold fixed on
     the real dev set, 87% of the answered test messages are right, not 95%.
   - Latency: 0.63 s per message on the CPU (float32, 4 threads) for the Phase 5 model, before
-    any optimisation. The second measurement ran while the machine was slowed, so it is not
-    comparable (see D-033).
+    any optimisation. The second measurement ran while Windows was throttling background
+    processes, so it is not comparable (see D-033). Phase 7 measures it properly.
+- **Quantization and deployment (Phase 7, D-034):** the rules were fixed before any quantized
+  model was scored ([results](docs/results/phase7_deploy.md)).
+  - **Exactness:** a KV-cache step graph in ONNX gives answers identical to PyTorch on all
+    1,761 development messages.
+  - **Choice:** INT8 (101 MB) and INT4 (78 MB) both kept intent accuracy within 1 point on the
+    development sets. The rule deploys the smallest, INT4, which passed by less than one message.
+  - **Test set, once per system:** float32 85.9%, INT8 82.8%, INT4 84.4%.
+    - INT4 gave three broken answers on the test set: two mixed Arabic words into English
+      replies, and one looped until the length limit.
+    - Qwen judged 87% of INT4's replies good, against 92% unquantized.
+    - A reply-language guard now escalates such replies (D-035). On the development sets it
+      rejected only garbled replies (2–6 of 1,761 per system).
+  - **Speed** (batch 1, 4 CPU threads): 0.118 s per answer against 0.788 s before (6.7×), and
+    0.251 s with the confidence. Peak memory is 252 MB against 1,190 MB. With 1 thread: 0.159 s
+    per answer.
+  - **Trade-off:** INT8 is faster than INT4 for the full prediction (0.188 s). The size-first rule
+    did not weigh that.
+  - **Serving:** a torch-free FastAPI service, a Docker image, a Gradio demo for Hugging Face
+    Spaces, and GitHub Actions CI with a smoke evaluation.
 
 Open: **the Arabic, Arabizi and mixed parts of the human test set** need a native Gulf Arabic
 speaker (see [Test data](#test-data)).
@@ -339,6 +366,38 @@ file whose SHA-256 has changed.
 | `uv run python scripts/evaluate_teacher.py --config configs/eval/phase6.yaml` | Qwen zero-shot intents and Qwen's judgement of DanaLM's replies (starts the teacher) | ~4 min |
 | `uv run python scripts/phase6_report.py --config configs/eval/phase6.yaml` | Results page: intervals, the D-030 bars, errors, all replies | seconds |
 
+### Phase 7: quantization and deployment
+
+The rules (D-034) were committed before any quantized model was scored. Every measuring script
+turns off Windows power throttling for its own process, since throttling otherwise distorts CPU
+timings. No system setting is changed.
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run python scripts/export_onnx.py --config configs/deploy/export.yaml` | One ONNX step graph with a KV cache (float32), plus a parity check against PyTorch | ~1 min |
+| `uv run python scripts/quantize_onnx.py --config configs/deploy/export.yaml` | The INT8 and INT4 variants in `artifacts/deploy/` | ~1 min |
+| `uv run python scripts/evaluate_variants.py --config configs/deploy/phase7.yaml` | Every system on the development sets; thresholds; the D-034 choice (`artifacts/deploy/selected.json`) | ~30 min |
+| `uv run python scripts/evaluate_variants.py --config configs/deploy/phase7.yaml phase7.split=test` | The human test set, once per system, after the choice | ~3 min |
+| `uv run python scripts/evaluate_teacher.py --config configs/deploy/phase7_judge.yaml` | Qwen judges the deployed variant's test replies (starts the teacher) | ~3 min |
+| `uv run python scripts/benchmark_latency.py --config configs/deploy/phase7.yaml` | Latency and memory, batch 1 on the CPU, each system in its own process | ~20 min |
+| `uv run python scripts/phase7_report.py --config configs/deploy/phase7.yaml` | Results page | seconds |
+| `uv run python scripts/ci_smoke.py` | The CI check: a tiny model through export, INT8/INT4, evaluation and the predictor | ~1 min |
+
+Serving, without PyTorch:
+
+```bash
+DANALM_MODEL_DIR=artifacts/deploy/int4 uv run uvicorn danalm.serve.app:app --port 8000
+curl -s localhost:8000/predict -H "content-type: application/json" -d '{"message": "my card got stuck in the ATM"}'
+docker build -t danalm-serve .
+docker run --rm -p 8000:8000 -v "$PWD/artifacts/deploy/int4:/model:ro" danalm-serve
+uv run --group demo python scripts/build_space.py --config configs/deploy/phase7.yaml
+```
+
+`POST /predict` returns the intent, the reply, the confidence and a route: `on_device` or
+`escalate`. It also returns the PII-masked message, which is the only text that should leave the
+device. `build_space.py` assembles the Hugging Face Space in `artifacts/space`, where
+`python app.py` runs the demo locally.
+
 ## Repository layout
 
 ```text
@@ -348,9 +407,13 @@ docs/          project brief, decision log, data ledger, test-set guide,
 scripts/       command-line entry points
 src/danalm/    library: config, seeding, run tracking, data pipeline and token shards,
                HF sampler, labelled public datasets, ledger, dialect and reply checks,
-               teacher server and client (with resumable answer logs), tokenizer, model,
-               training loop, SFT format and evaluation
+               teacher server and client (with resumable answer logs), tokenizer, model
+               (with its KV-cache step, ONNX export and quantization), training loop, SFT
+               format and evaluation; infer/ and serve/ run without PyTorch
+deploy/        pinned requirements of the serving image and the demo
+space/         the Gradio demo for Hugging Face Spaces
 tests/         unit tests and tiny synthetic fixtures
+.github/       CI: lint, tests, the smoke evaluation and the service image
 data/ runs/ artifacts/   gitignored: datasets, run records, tokenizers and checkpoints
 ```
 

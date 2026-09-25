@@ -36,3 +36,8 @@ latency:                       # D-034 protocol, scripts/benchmark_latency.py
   per_set: 50                  # messages from each development set
   warmup: 3
   threads: [4, 1]              # 4 as in D-032; 1 is closer to a phone core
+
+hf_model:                      # Phase 8, scripts/build_hf_model.py (upload is the owner's step)
+  dir: ${paths.artifacts_dir}/hf-model
+  model_card: docs/MODEL_CARD.md
+  variants: [int4, int8, fp32]   # the deployed variant first

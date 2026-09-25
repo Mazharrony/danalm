@@ -54,6 +54,41 @@ Next steps:
 2. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set.
 3. Make the confidence trustworthy on real messages.
 
+## How it works
+
+**How the model was built.** Every data source is openly licensed, and every rule was written
+down before its result was known.
+
+```mermaid
+flowchart LR
+  subgraph data [Data]
+    corpora["Open text corpora<br/>1.49B tokens<br/>FineWeb-2, Wikipedia,<br/>FineWeb-Edu, Bitext"]
+    teacher["Local teacher model<br/>Qwen3.5-35B-A3B<br/>writes messages and replies"]
+    real["Real CC-BY messages<br/>Banking77, CLINC150"]
+  end
+  corpora --> tok["Tokenizer<br/>16k byte-level BPE"]
+  tok --> pre["Pretraining<br/>62M decoder, 2 passes<br/>one RTX 4070"]
+  pre --> sft["Fine-tuning<br/>24,263 examples<br/>JSON answers"]
+  teacher --> sft
+  real --> sft
+  sft --> eval["Evaluation<br/>human test set,<br/>scored once"]
+  sft --> onnx["ONNX export<br/>KV cache, INT4, 78 MB"]
+```
+
+**What happens to a message.** No PyTorch is needed at run time. Only the masked text ever
+leaves the device.
+
+```mermaid
+flowchart LR
+  msg["Customer message"] --> mask["Normalize,<br/>mask personal data"]
+  mask --> gen["DanaLM INT4<br/>writes the JSON answer"]
+  mask --> score["Scores all 21 intents<br/>= confidence"]
+  gen --> check{"Valid JSON?<br/>Reply in the<br/>customer's language?<br/>Confident enough?"}
+  score --> check
+  check -- yes --> device["Answer on the device<br/>0.25 s on 4 CPU threads"]
+  check -- no --> human["Escalate to a person<br/>or a bigger model"]
+```
+
 ## Progress
 
 | Phase | Status | Headline |
@@ -66,7 +101,7 @@ Next steps:
 | 5. SFT | done; a second round added real messages (D-033) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages |
 | 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
 | 7. Quantization and deployment | done | INT4 ONNX, 78 MB: 0.12 s per answer on 4 CPU threads (6.7× faster), 84% on the English test; FastAPI, Docker, CI, Gradio demo |
-| 8. Presentation | later | |
+| 8. Presentation | in progress | Architecture diagrams, a [model card](docs/MODEL_CARD.md), a Hugging Face model folder and Space built locally (publishing is the owner's step) |
 
 Results by phase:
 

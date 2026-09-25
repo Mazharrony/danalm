@@ -107,3 +107,20 @@ def detect_lang(text: str) -> str:
         evidence = sum(1 for w in words if ARABIZI_HINT.fullmatch(w) or w.lower() in ARABIZI_WORDS)
         return "arabizi" if words and evidence / len(words) >= ARABIZI_MIN_SHARE else "en"
     return "mixed"
+
+
+# ---------------------------------------------------------------- reply guard (D-035)
+# detect_lang's tag of a message -> the SFT variety whose reply languages apply (D-023)
+LANG_TO_VARIETY = {"en": "english", "ar": "gulf_arabic", "arabizi": "arabizi", "mixed": "mixed"}
+
+
+def reply_fits(message: str, reply: str, reply_langs: dict[str, list[str]]) -> bool:
+    """Whether a reply is in a language the customer can read (D-035): one of the reply languages
+    of the message's detected variety (reply_langs, as sft_data.reply_langs), and no Arabic letter
+    at all in a reply to an English message. Messages without letters are not checked."""
+    lang = detect_lang(message)
+    if lang not in LANG_TO_VARIETY:
+        return True
+    if lang == "en" and AR_CHAR.search(PLACEHOLDER.sub(" ", reply)):
+        return False
+    return detect_lang(reply) in reply_langs[LANG_TO_VARIETY[lang]]

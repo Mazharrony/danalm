@@ -39,6 +39,7 @@ def manifest(cfg: dict[str, Any], variant: str, checkpoint: str, model_file: Pat
         "special": d["special"],
         "intents": [i["name"] for i in load_intents(d["intents_file"])],
         "normalize": d["normalize"],
+        "reply_langs": d["reply_langs"],
         "max_new_tokens": cfg["eval"]["max_new_tokens"],
         "threshold": None,
         "source_checkpoint": checkpoint,

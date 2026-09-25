@@ -120,7 +120,7 @@ def main() -> None:
             meta = {"variant": name, "model_file": "model.onnx", "tokenizer_file": "tokenizer.json",
                     "threshold": 0.5, "intents": INTENTS, "max_new_tokens": EV["max_new_tokens"],
                     "model_config": {"max_seq_len": cfg.max_seq_len}, "special": SPECIAL,
-                    "normalize": NORM}  # fmt: skip
+                    "normalize": NORM, "reply_langs": LANGS}  # fmt: skip
             (root / name / "danalm.json").write_text(json.dumps(meta), encoding="utf-8")
             out = Predictor(root / name, threads=2).predict("my card is not working at the atm")
             print(

@@ -117,6 +117,7 @@ def model_dir(tok, onnx_path, tmp_path_factory):
         "max_new_tokens": 12, "model_config": {"max_seq_len": TINY.max_seq_len},
         "special": {"user": "<|user|>", "assistant": "<|assistant|>", "eos": "<|endoftext|>", "pad": "<|pad|>"},
         "normalize": {"strip_diacritics": True, "unify_alef": False},
+        "reply_langs": {"english": ["en"], "gulf_arabic": ["ar"], "arabizi": ["ar"], "mixed": ["ar", "mixed"]},
     }  # fmt: skip
     (d / "danalm.json").write_text(json.dumps(meta), encoding="utf-8")
     return d
@@ -124,8 +125,8 @@ def model_dir(tok, onnx_path, tmp_path_factory):
 
 def test_predictor_returns_the_schema_and_masks_pii(model_dir):
     out = Predictor(model_dir, threads=1).predict("my card is not working, call 0501234567")
-    assert set(out) == {"intent", "reply", "confidence", "route", "valid_json", "finished",
-                        "message_masked", "latency_ms"}  # fmt: skip
+    assert set(out) == {"intent", "reply", "confidence", "route", "valid_json", "reply_fits",
+                        "finished", "message_masked", "latency_ms"}  # fmt: skip
     assert out["message_masked"] == "my card is not working, call <PHONE>"
     assert out["route"] in ("on_device", "escalate") and 0.0 <= out["confidence"] <= 1.0
     if not out["valid_json"]:  # an untrained model: nothing valid, so it must escalate
@@ -201,3 +202,24 @@ def test_power_throttling_opt_out_only_reports_what_happened():
     from danalm.utils.power import disable_power_throttling
 
     assert disable_power_throttling() is (sys.platform == "win32")
+
+
+def test_reply_guard_escalates_replies_in_the_wrong_script():
+    """D-035, with the two garbled INT4 test replies (t0010, t0064) among the cases."""
+    from danalm.text import reply_fits
+
+    langs = {"english": ["en"], "gulf_arabic": ["ar"], "arabizi": ["ar"], "mixed": ["ar", "mixed"]}
+    cases = [
+        ("tell me how much i have been buying as of late",
+         "I cannot provide details about buyingنوضح لك كيفية الاطلاع. Please log in.", False),
+        ("have i gone over my budget",
+         "I am not able to answer this albertكلة طريقك، I will pass your request to a team member.", False),
+        ("my card is not working", "Please check that the card is active in the app.", True),
+        ("البطاقة ما تشتغل", "تأكد إن البطاقة مفعلة في التطبيق.", True),
+        ("البطاقة ما تشتغل", "Please check the card in the app.", False),
+        ("3andi mushkila fil card", "تأكد إن البطاقة مفعلة في التطبيق.", True),
+        ("call me on <PHONE> please", "We will pass your request to the team.", True),
+        ("12345", "anything", True),
+    ]  # fmt: skip
+    for message, reply, fits in cases:
+        assert reply_fits(message, reply, langs) is fits, message

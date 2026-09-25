@@ -14,6 +14,7 @@ from typing import Any
 
 from danalm.config import config_from_cli
 from danalm.eval.stats import wilson_interval
+from danalm.text import normalize, reply_fits
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -36,6 +37,65 @@ def diff(dev: dict[str, Any], variant: str, split: str, limit: float) -> str:
 def rate(k: int, n: int) -> str:
     lo, hi = wilson_interval(k, n)
     return f"{100 * k / n:.1f}% ({k}/{n}; {100 * lo:.0f}–{100 * hi:.0f}%)"
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def fits(x: dict[str, Any], cfg: dict[str, Any]) -> bool:
+    """The D-035 reply guard on a saved prediction (as the predictor applies it)."""
+    d = cfg["sft_data"]
+    return reply_fits(normalize(x["message"], **d["normalize"]), x["reply"], d["reply_langs"])
+
+
+def broken(path: Path, cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """Answers that are not valid JSON or whose reply the guard rejects."""
+    return [x for x in read_jsonl(path) if not x["valid"] or not fits(x, cfg)]
+
+
+def guard_section(cfg: dict[str, Any], out: Path, dev: dict[str, Any], test: bool) -> list[str]:
+    """D-035: what the reply guard escalates, on the saved predictions of every system."""
+    runs = [("dev", k) for k in cfg["phase7"]["dev_sets"]] + ([("test", "test")] if test else [])
+    rows, flagged = [], []
+    for split, k in runs:
+        for s, thr in dev["thresholds"].items():
+            path = out / f"{split}_{k}_{s}.jsonl"
+            if not path.exists():
+                continue
+            ps = read_jsonl(path)
+            bad = [x for x in ps if x["valid"] and not fits(x, cfg)]
+            before = [x for x in ps if x["valid"] and x["conf"] >= thr]
+            after = [x for x in before if fits(x, cfg)]
+
+            def acc(a: list[dict[str, Any]]) -> str:
+                return pct(sum(x["pred_intent"] == x["intent"] for x in a) / len(a) if a else None)
+
+            rows.append(f"| {k} | {s} | {len(bad)} of {len(ps)} | {len(before)} → {len(after)} | "
+                        f"{acc(before)} → {acc(after)} |")  # fmt: skip
+            flagged += [(k, s, x) for x in bad]
+    return [
+        "## Reply guard (D-035)",
+        "",
+        "Added after the test run: the predictor escalates a reply that does not fit the customer's "
+        "language. Applied here to the saved predictions; no model was re-run. The development sets "
+        "give the false-alarm check; the test rows are not an independent estimate, because the "
+        "test set revealed the problem.",
+        "",
+        "| Set | System | Replies rejected | Answered on the device, before → after | Their intent accuracy |",
+        "|---|---|---:|---:|---:|",
+        *rows,
+        "",
+        "Every rejected reply:",
+        "",
+        "| Set | System | Message | Reply |",
+        "|---|---|---|---|",
+        *(f"| {k} | {s} | {cell(x['message'])} | {cell(x['reply'])} |" for k, s, x in flagged),
+    ]
+
+
+def cell(text: str) -> str:
+    return str(text).replace("|", "\\|").replace("\n", " ")
 
 
 def main() -> None:
@@ -167,9 +227,15 @@ def main() -> None:
                 f"Qwen judged the deployed variant's {len(judged)} valid test replies with the D-032 "
                 "prompt: " + ", ".join(f"{q.replace('_', ' ')} {rate(sum(j[q] is True for j in judged), len(judged))}"
                                         for q in ("answers", "polite_clear", "language", "safe"))
-                + f". **All four yes: {rate(sum(j['good'] for j in judged), len(judged))}.**",
+                + f". **All four yes: {rate(sum(j['good'] for j in judged), len(judged))}.** "
+                "Phase 6b, the same model unquantized: 92.2% (59/64).",
+                "",
+                "Broken answers of the deployed variant on the test set: "
+                + "; ".join(f"{x['id']} ({'invalid JSON' if not x['valid'] else 'reply: ' + repr(x['reply'][:70])})"
+                            for x in broken(out / f"test_test_onnx-{sel['variant']}.jsonl", cfg)) + ".",
                 "",
             ]  # fmt: skip
+    lines += guard_section(cfg, out, dev, bool(test))
     Path(p["results_md"]).write_text(
         "\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n"
     )

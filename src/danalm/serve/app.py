@@ -2,8 +2,9 @@
 
 Run: DANALM_MODEL_DIR=artifacts/deploy/int8 uv run uvicorn danalm.serve.app:app --port 8000
 - POST /predict {"message": "..."} -> intent, reply, confidence, route ("on_device" when the
-  answer is valid JSON and its confidence clears the threshold, else "escalate"), whether the
-  answer is valid JSON, the PII-masked message (what may leave the device), latency.
+  answer is valid JSON, its reply fits the customer's language (D-035) and its confidence clears
+  the threshold, else "escalate"), the checks, the PII-masked message (what may leave the
+  device), latency.
 - GET /health -> the model variant, its SHA-256 and the threshold.
 Settings come from the environment: DANALM_MODEL_DIR (a directory from
 scripts/export_onnx.py or scripts/quantize_onnx.py) and DANALM_THREADS (ONNX Runtime threads,
@@ -31,6 +32,7 @@ class PredictResponse(BaseModel):
     confidence: float
     route: Literal["on_device", "escalate"]
     valid_json: bool
+    reply_fits: bool
     finished: bool
     message_masked: str
     latency_ms: float

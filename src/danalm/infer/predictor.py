@@ -2,7 +2,8 @@
 
 A model directory holds the graph, tokenizer.json and danalm.json (written by
 scripts/export_onnx.py and scripts/quantize_onnx.py): the intents, the special tokens, the
-normalization, the answer length and the confidence threshold fixed on the real dev set.
+normalization, the reply languages, the answer length and the confidence threshold fixed on
+the real dev set.
 """
 
 import json
@@ -16,7 +17,7 @@ from tokenizers import Tokenizer
 from danalm.infer.decode import greedy_from, label_logprobs_from, prefill
 from danalm.infer.onnx import OnnxStep
 from danalm.sft.format import ChatTokens, label_continuations, parse_answer, prompt_ids
-from danalm.text import normalize
+from danalm.text import normalize, reply_fits
 
 
 class MessageTooLong(ValueError):
@@ -40,9 +41,9 @@ class Predictor:
 
     def predict(self, message: str) -> dict[str, Any]:
         """The answer, its confidence (the intent's share of the 21 intent likelihoods, D-030)
-        and the route: "on_device" when the answer is valid and confident enough, else
-        "escalate". message_masked is the normalized text with PII masked: what may leave the
-        device, e.g. with an escalation."""
+        and the route: "on_device" when the answer is valid, its reply fits the customer's
+        language (D-035) and it is confident enough, else "escalate". message_masked is the
+        normalized text with PII masked: what may leave the device, e.g. with an escalation."""
         start = time.perf_counter()
         norm = self.meta["normalize"]
         prompt = prompt_ids(self.tok, self.chat, message, norm)
@@ -59,14 +60,17 @@ class Predictor:
         probs = np.exp(scores - scores.max())
         probs /= probs.sum()
         conf = float(probs[self.intents.index(answer["intent"])]) if answer["valid"] else 0.0
-        on_device = answer["valid"] and conf >= self.threshold
+        masked = normalize(message, **norm)
+        fits = answer["valid"] and reply_fits(masked, answer["reply"], self.meta["reply_langs"])
+        on_device = fits and conf >= self.threshold
         return {
             "intent": answer["intent"] if answer["valid"] else None,
             "reply": answer["reply"] if answer["valid"] else None,
             "confidence": round(conf, 4),
             "route": "on_device" if on_device else "escalate",
             "valid_json": answer["valid"],
+            "reply_fits": fits,
             "finished": finished,
-            "message_masked": normalize(message, **norm),
+            "message_masked": masked,
             "latency_ms": round(1000 * (time.perf_counter() - start), 1),
         }

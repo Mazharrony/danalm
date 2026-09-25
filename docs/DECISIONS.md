@@ -964,3 +964,51 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     - CPU (float32, 4 threads): median 0.63 s, p95 0.92 s. GPU: median 0.37 s.
     - The weights are 237 MB. The process peaks at 1.2 GB, of which 0.93 GB was there before the
       model loaded.
+
+## D-033 · Phase 5b · Real customer messages, to raise accuracy on real messages
+
+- **Decision:** the owner asked on 2026-09-25 for a plan that raises accuracy, and said "go".
+  Everything below is fixed before any data is fetched or any model is trained.
+  - **Why:** in Phase 6 (D-032), DanaLM fell from 92.9% on the synthetic validation split to
+    56.2% on real English messages. The training messages were all written by the teacher.
+  - **Real data:**
+    - The train splits of Banking77 (CC-BY-4.0, PolyAI repository at `57ec275d`) and CLINC150
+      (CC-BY-3.0, `clinc/clinc_oos` "plus" at `155b9c71`), mapped to our intents with the D-025
+      label maps: 5,394 English messages over 10 intents. The test splits stay reserved.
+    - Any message that equals or nearly copies a human test message is dropped first, using the
+      matching of `check_overlap.py`.
+  - **Real dev set:**
+    - 15% of each intent (seed 42) is held out before anything else is done with these messages.
+      It keeps the mapped labels without any filter: noisy, but not biased towards easy messages.
+    - It is used only to choose the model and the confidence threshold, never for training.
+  - **The remaining real messages:**
+    - Training candidates that nearly copy a dev message are dropped. At most 500 per intent are
+      kept, spread over the source labels.
+    - Qwen writes English replies with the SFT reply rules.
+    - The blind label judge keeps only the messages whose mapped label it agrees with, and the
+      reply check drops broken replies.
+  - **Style top-up (synthetic, English):** 6 requests per intent (126 requests), with a style rule
+    for how real customers type: short and blunt, often lowercase, typos, no greeting, varied
+    international English. The same filters, judge and reply check apply.
+  - **Data v4:**
+    - final-v3, plus the real messages, plus the style top-up.
+    - Training messages that nearly copy a test or real-dev message are dropped.
+    - The SFT validation split stays the same 957 examples.
+  - **Training:**
+    - The D-029 recipe, on two bases (the first and the second pretraining pass) × two peak
+      learning rates (3e-4 and 1e-3), 5 epochs each.
+    - Every epoch is evaluated on the SFT validation split and on the real dev set.
+  - **Selection:**
+    - The checkpoint with the highest intent accuracy on the real dev set wins, among those whose
+      SFT-validation accuracy is at least 90.9%. That is the Phase 5 model's 92.9% minus 2
+      points, so Gulf Arabic, Arabizi and mixed messages do not pay for gains in English.
+    - Within 1 point of the best: higher valid JSON on the real dev set wins, then higher
+      SFT-validation accuracy.
+  - **Coverage threshold (D-030):** fixed on the real dev set with the chosen model, instead of
+    on the synthetic split.
+  - **Test:** the chosen model is scored once with the D-032 protocol. Phase 6's result stays on
+    record next to it.
+  - **Caveat:** the English test set comes from the test splits of the same two datasets. Part
+    of any English gain will come from training on their style. The Gulf Arabic, Arabizi and
+    mixed test parts, still unwritten, remain the real check.
+- **Time:** about 1 h of teacher time and 40 minutes of GPU time. No single job runs over 2 h.

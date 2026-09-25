@@ -1,0 +1,52 @@
+# D-037: real everyday requests from MASSIVE (en-US and ar-SA train splits): weather, alarms,
+# music, trivia and so on, all `other` for us, and takeaway_query as order_status. They teach the
+# model to recognise off-topic messages and route them. The teacher writes the replies. 15% of
+# each intent is held out first as part of the question-type dev set.
+#   uv run python scripts/fetch_labelled.py --config configs/sft/qtypes_massive.yaml
+#   uv run python scripts/split_real.py     --config configs/sft/qtypes_massive.yaml
+#   uv run python scripts/write_replies.py  --config configs/sft/qtypes_massive.yaml
+#   uv run python scripts/verify_sft.py     --config configs/sft/qtypes_massive.yaml
+base: qtypes_bitext.yaml
+run_name: sft-qtypes-massive
+
+fetch:
+  sources:
+    - name: massive-en-train
+      repo_id: AmazonScience/massive
+      revision: ed58ac423a2f4121720918bf5301577edce4ffd3  # refs/convert/parquet
+      files: en-US/train/*.parquet
+      text_column: utt
+      label_column: intent
+      label_map: {"*": other, takeaway_query: order_status}
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: 1000
+      max_per_label: null
+      max_rows: null
+      licence: CC-BY-4.0
+      kind: real (crowdsourced)
+      description: English everyday assistant requests (MASSIVE en-US train), D-037
+    - name: massive-ar-train
+      repo_id: AmazonScience/massive
+      revision: ed58ac423a2f4121720918bf5301577edce4ffd3
+      files: ar-SA/train/*.parquet
+      text_column: utt
+      label_column: intent
+      label_map: {"*": other, takeaway_query: order_status}
+      exclude_label_prefixes: []
+      variety: saudi_arabic
+      max_per_intent: 500
+      max_per_label: null
+      max_rows: null
+      licence: CC-BY-4.0
+      kind: real (localized by native speakers)
+      description: Arabic everyday assistant requests (MASSIVE ar-SA train), D-037
+
+split:
+  max_per_intent: 1000         # other is the point of this source; not capped at 250
+
+replies:
+  varieties:
+    english: {reply_style: "${sft.reply_styles.english}", reply_langs: [en], gulf_filter: false}
+    saudi_arabic: {reply_style: "${sft.reply_styles.gulf_arabic}", reply_langs: [ar], gulf_filter: true}
+  out_dir: ${paths.data_dir}/sft/sft-qtypes-massive-replies

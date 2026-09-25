@@ -1380,3 +1380,11 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   (bf16 on the GPU, like Phase 6 and 6b). Quantization and deployment follow as a separate step.
 - **Time:** about 2.5–3 h of teacher time (heavy CPU load, and the PC's BIOS is not updated;
   every step resumes after a crash), and about 1.5 h on the GPU.
+- **Amendment, before any reply or message was generated (2026-09-25):**
+  - Bitext's split kept 2,877 training candidates, not the ~4,000 expected. Its messages are
+    heavily templated, so the dev-copy check dropped 2,676 of them.
+  - To reach about 10,000 new examples, the Qwen grid uses **4 requests per cell** (1,248
+    requests) instead of 3.
+  - The coverage threshold is fixed on the real dev set, as in D-033.
+  - The question-type dev set is 1,298 messages: 1,038 from Bitext and 260 from MASSIVE. As
+    with the real dev set of D-033, it keeps the mapped labels unfiltered.

@@ -1,0 +1,178 @@
+# D-037: English messages from Bitext (customer support, retail banking, telco), mapped to our
+# intents, for the question types the model has not seen (status checks, how-to, conditions,
+# costs). Only Bitext's messages are used; the teacher writes the replies. 15% of each intent is
+# held out first as part of the question-type dev set.
+#   uv run python scripts/fetch_labelled.py --config configs/sft/qtypes_bitext.yaml
+#   uv run python scripts/split_real.py     --config configs/sft/qtypes_bitext.yaml
+#   uv run python scripts/write_replies.py  --config configs/sft/qtypes_bitext.yaml
+#   uv run python scripts/verify_sft.py     --config configs/sft/qtypes_bitext.yaml
+base: full.yaml
+run_name: sft-qtypes-bitext
+
+fetch:
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  used_for: supervised fine-tuning (Phase 5c, D-037); 15% held out for the question-type dev set, never trained on
+  sources:
+    - name: bitext-support
+      repo_id: bitext/Bitext-customer-support-llm-chatbot-training-dataset
+      revision: f93dfd8473c480417bd50123f605f11d638f014c
+      files: default/train/*.parquet
+      text_column: instruction
+      label_column: intent
+      drop_substrings: ["{{"]  # template slots such as {{Order Number}}
+      label_map:
+        cancel_order: cancel_order
+        change_shipping_address: change_delivery_details
+        set_up_shipping_address: change_delivery_details
+        track_order: order_status
+        delivery_period: order_status
+        get_refund: refund_request
+        track_refund: refund_request
+        check_refund_policy: refund_request
+        payment_issue: transfer_issue
+        recover_password: account_access
+        registration_problems: account_access
+        contact_human_agent: handoff_to_human
+        contact_customer_service: handoff_to_human
+        complaint: handoff_to_human
+        check_payment_methods: other
+        create_account: other
+        delete_account: other
+        edit_account: other
+        switch_account: other
+        delivery_options: other
+        newsletter_subscription: other
+        place_order: other
+        review: other
+        change_order: null           # changing the items of an order: no intent of ours
+        check_cancellation_fee: null
+        check_invoice: null
+        get_invoice: null
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: 300
+      max_per_label: null
+      max_rows: null
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext; varied phrasing, typos, colloquial)
+      description: Bitext customer-support messages (not its replies), D-037 label map, no template slots
+    - name: bitext-banking
+      repo_id: bitext/Bitext-retail-banking-llm-chatbot-training-dataset
+      revision: 3e3621092fc6baaf7f53ceb6f091c60ae99acb67
+      files: "*.parquet"
+      text_column: instruction
+      label_column: intent
+      drop_substrings: ["{{"]
+      label_map:
+        apply_for_loan: loans_and_credit
+        apply_for_mortgage: loans_and_credit
+        cancel_loan: loans_and_credit
+        cancel_mortgage: loans_and_credit
+        check_loan_payments: loans_and_credit
+        check_mortgage_payments: loans_and_credit
+        block_card: lost_or_stolen_card
+        recover_swallowed_card: card_not_working
+        cancel_transfer: transfer_issue
+        check_card_annual_fee: fees_and_charges
+        check_fees: fees_and_charges
+        check_current_balance_on_card: balance_or_statement
+        check_recent_transactions: balance_or_statement
+        dispute_ATM_withdrawal: unrecognized_transaction
+        get_password: account_access
+        set_up_password: account_access
+        customer_service: handoff_to_human
+        human_agent: handoff_to_human
+        make_transfer: other         # how to send money is a request, not a transfer problem
+        activate_card: other
+        activate_card_international_usage: other
+        cancel_card: other
+        close_account: other
+        create_account: other
+        find_ATM: other
+        find_branch: other
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: 300
+      max_per_label: null
+      max_rows: null
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext; varied phrasing, typos, colloquial)
+      description: Bitext retail-banking messages (not its replies), D-037 label map
+    - name: bitext-telco
+      repo_id: bitext/Bitext-telco-llm-chatbot-training-dataset
+      revision: 4558834597845ec6368f563d1c8f957ba725183f
+      files: default/train/*.parquet
+      text_column: instruction
+      label_column: intent
+      drop_substrings: ["{{"]
+      label_map:
+        activate_roaming: roaming
+        change_plan: plan_change
+        cancel_plan: plan_change
+        sign_up_for_plan: plan_change
+        activate_call_management_services: plan_change
+        deactivate_call_management_services: plan_change
+        set_usage_limits: plan_change
+        activate_phone: sim_or_number
+        deactivate_phone: sim_or_number
+        change_provider: sim_or_number
+        check_signal_coverage: network_or_internet_issue
+        report_poor_signal_coverage: network_or_internet_issue
+        check_excess_data_charges: bill_inquiry
+        check_mobile_payments: bill_inquiry
+        dispute_invoice: bill_inquiry
+        invoices: bill_inquiry
+        pay: bill_inquiry
+        payment_methods: bill_inquiry
+        schedule_payments: bill_inquiry
+        customer_service: handoff_to_human
+        human_agent: handoff_to_human
+        check_cancellation_fee: null
+        check_usage: null
+        get_compensation: null
+        install_internet: null
+        report_problem: null
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: 300
+      max_per_label: null
+      max_rows: null
+      licence: CDLA-Sharing-1.0
+      kind: synthetic (by Bitext; varied phrasing, typos, colloquial)
+      description: Bitext telco messages (not its replies), D-037 label map
+
+split:                         # scripts/split_real.py
+  test_set: ${paths.data_dir}/test/test_set.jsonl
+  overlap: {normalize: {strip_diacritics: true, unify_alef: false}, char_ngram: 3, num_perm: 128, near_dup_threshold: 0.6}
+  dev_share: 0.15              # per intent, seeded: the Bitext part of the question-type dev set
+  max_per_intent: 250          # training candidates, spread over the source labels (D-037)
+  dev: ${fetch.out_dir}/dev.jsonl
+  train: ${fetch.out_dir}/train_candidates.jsonl
+
+replies:
+  inputs: ["${split.train}"]
+  varieties:
+    english: {reply_style: "${sft.reply_styles.english}", reply_langs: [en], gulf_filter: false}
+  batch: 10
+  max_rows: null
+  out_dir: ${paths.data_dir}/sft/sft-qtypes-bitext-replies
+  params: ${sft.params}
+  system: ${sft.system}
+  prompt: >-
+    Below are {n} numbered customer messages to a UAE customer-service chatbot, each with its
+    intent. Write the assistant's reply to each message. {reply_style}
+    One or two short, polite sentences. Refer only to what the customer wrote: never assume a
+    reason, a product problem, an amount, a date or an outcome they did not mention. Never
+    invent facts (balances, amounts, dates, names, policies). Never ask for card numbers, PINs,
+    passwords, OTPs or CVV. The assistant cannot see the account or do anything itself, so never
+    say something has been done (blocked, frozen, refunded, sent, changed, logged, noted,
+    escalated); for a question about how to do something or what is possible, point to the app,
+    the website or the team without inventing steps or rules; otherwise say what the customer
+    can do next or that the request will be passed to the team.
+
+    {messages}
+
+    Output exactly {n} lines, each one JSON object: {{"n": <message number>, "reply": "..."}}.
+
+verify:
+  inputs: ["${replies.out_dir}/generated.jsonl"]

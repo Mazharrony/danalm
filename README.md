@@ -49,10 +49,10 @@ What is still open:
 
 Next steps:
 
-1. Presentation (Phase 8): a README with an architecture diagram, a model card, and publishing on
-   Hugging Face.
-2. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set.
-3. Make the confidence trustworthy on real messages.
+1. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set (needs a native
+   speaker).
+2. Make the confidence trustworthy on real messages.
+3. Publish the model and the demo on Hugging Face.
 
 ## How it works
 
@@ -101,7 +101,7 @@ flowchart LR
 | 5. SFT | done; a second round added real messages (D-033) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages |
 | 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
 | 7. Quantization and deployment | done | INT4 ONNX, 78 MB: 0.12 s per answer on 4 CPU threads (6.7× faster), 84% on the English test; FastAPI, Docker, CI, Gradio demo |
-| 8. Presentation | in progress | Architecture diagrams, a [model card](docs/MODEL_CARD.md), a Hugging Face model folder and Space built locally (publishing is the owner's step) |
+| 8. Presentation | done; publishing on Hugging Face is the owner's step | Architecture diagrams, a [model card](docs/MODEL_CARD.md), the Hugging Face model folder and Space, built and checked locally |
 
 Results by phase:
 

@@ -13,7 +13,7 @@ import torch
 from danalm.eval.cached import evaluate_cached
 from danalm.infer.decode import greedy_from, label_logprobs_from, prefill
 from danalm.infer.onnx import OnnxStep
-from danalm.infer.predictor import Predictor
+from danalm.infer.predictor import MessageTooLong, Predictor
 from danalm.model.export import empty_cache, export_onnx, numpy_step
 from danalm.model.transformer import DanaLM, ModelConfig
 from danalm.sft.evaluate import evaluate, greedy_answers, label_logprobs
@@ -105,17 +105,25 @@ def test_onnx_step_matches_pytorch(model, onnx_path):
     assert (TINY.d_model, TINY.vocab_size) in shapes.values()
 
 
-def test_predictor_returns_the_schema_and_masks_pii(tok, onnx_path, tmp_path):
-    tok.save(str(tmp_path / "tokenizer.json"))
-    (tmp_path / "model.onnx").write_bytes(onnx_path.read_bytes())
+@pytest.fixture(scope="module")
+def model_dir(tok, onnx_path, tmp_path_factory):
+    """A model directory as scripts/export_onnx.py writes it, for the tiny model."""
+    d = tmp_path_factory.mktemp("model_dir")
+    tok.save(str(d / "tokenizer.json"))
+    (d / "model.onnx").write_bytes(onnx_path.read_bytes())
     meta = {
-        "model_file": "model.onnx", "tokenizer_file": "tokenizer.json", "threshold": 0.5,
-        "intents": ["card_not_working", "order_status", "other"], "max_new_tokens": 12,
+        "variant": "fp32", "model_file": "model.onnx", "tokenizer_file": "tokenizer.json",
+        "threshold": 0.5, "intents": ["card_not_working", "order_status", "other"],
+        "max_new_tokens": 12, "model_config": {"max_seq_len": TINY.max_seq_len},
         "special": {"user": "<|user|>", "assistant": "<|assistant|>", "eos": "<|endoftext|>", "pad": "<|pad|>"},
         "normalize": {"strip_diacritics": True, "unify_alef": False},
     }  # fmt: skip
-    (tmp_path / "danalm.json").write_text(json.dumps(meta), encoding="utf-8")
-    out = Predictor(tmp_path, threads=1).predict("my card is not working, call 0501234567")
+    (d / "danalm.json").write_text(json.dumps(meta), encoding="utf-8")
+    return d
+
+
+def test_predictor_returns_the_schema_and_masks_pii(model_dir):
+    out = Predictor(model_dir, threads=1).predict("my card is not working, call 0501234567")
     assert set(out) == {"intent", "reply", "confidence", "route", "valid_json", "finished",
                         "message_masked", "latency_ms"}  # fmt: skip
     assert out["message_masked"] == "my card is not working, call <PHONE>"
@@ -155,10 +163,36 @@ def test_cached_evaluation_equals_the_d029_evaluation(model, tok):
     )
 
 
+def test_predictor_refuses_a_message_longer_than_the_context(model_dir):
+    with pytest.raises(MessageTooLong):
+        Predictor(model_dir, threads=1).predict("where is my order " * 40)
+
+
+def test_service_predicts_and_rejects_bad_requests(model_dir, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from danalm.serve import app as service
+
+    monkeypatch.setenv("DANALM_MODEL_DIR", str(model_dir))
+    monkeypatch.setenv("DANALM_THREADS", "1")
+    service.predictor.cache_clear()
+    client = TestClient(service.app)
+    health = client.get("/health").json()
+    assert health["status"] == "ok" and health["variant"] == "fp32" and health["threshold"] == 0.5
+    r = client.post("/predict", json={"message": "where is my order? call 0501234567"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["route"] in ("on_device", "escalate") and "<PHONE>" in body["message_masked"]
+    assert client.post("/predict", json={"message": ""}).status_code == 422
+    assert client.post("/predict", json={"message": "where is my order " * 40}).status_code == 422
+    service.predictor.cache_clear()
+
+
 def test_serving_modules_import_without_torch_or_datasketch():
     code = BLOCK_HEAVY + (
         "import danalm.text, danalm.sft.format\n"
         "import danalm.infer.decode, danalm.infer.onnx, danalm.infer.predictor\n"
+        "import danalm.serve.app\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
 

@@ -9,6 +9,7 @@ requires-python = ">=3.12,<3.13"
 # Exact versions live in uv.lock; bounds here only say what the code is written against.
 dependencies = [
     "datasketch>=2.0",
+    "fastapi>=0.120",
     "huggingface-hub>=1.32.0",
     "numpy>=2.5",
     "onnx>=1.23",
@@ -21,12 +22,14 @@ dependencies = [
     "torch>=2.14,<2.15",
     "transformers>=5.17",
     "triton-windows>=3.8,<3.9 ; sys_platform == 'win32'",
+    "uvicorn>=0.38",
     "wandb>=0.30",
 ]
 
 [dependency-groups]
 dev = [
     "black>=26.5",
+    "httpx>=0.28",
     "matplotlib>=3.11.2",
     "pre-commit>=4.6",
     "pytest>=9.1",

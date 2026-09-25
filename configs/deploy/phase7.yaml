@@ -27,3 +27,9 @@ phase7:
   selected: ${paths.artifacts_dir}/deploy/selected.json
   test_set: ${paths.data_dir}/test/test_set.jsonl
   test_sha256: e6961fd244c57f2db1460052586b1dfd8183cc3269bad774577ef87660248397   # D-032
+
+latency:                       # D-034 protocol, scripts/benchmark_latency.py
+  seed: 42
+  per_set: 50                  # messages from each development set
+  warmup: 3
+  threads: [4, 1]              # 4 as in D-032; 1 is closer to a phone core

@@ -1,0 +1,10 @@
+# The image needs only deploy/requirements.txt and the torch-free modules (see Dockerfile).
+*
+!deploy/requirements.txt
+!src/danalm/__init__.py
+!src/danalm/text.py
+!src/danalm/sft/__init__.py
+!src/danalm/sft/format.py
+!src/danalm/infer/
+!src/danalm/serve/
+**/__pycache__

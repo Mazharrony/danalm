@@ -19,6 +19,10 @@ from danalm.sft.format import ChatTokens, label_continuations, parse_answer, pro
 from danalm.text import normalize
 
 
+class MessageTooLong(ValueError):
+    """The prompt and the longest answer would not fit in the model's context."""
+
+
 class Predictor:
     def __init__(self, model_dir: str | Path, threads: int, threshold: float | None = None):
         d = Path(model_dir)
@@ -31,6 +35,8 @@ class Predictor:
         self.threshold = self.meta.get("threshold") if threshold is None else threshold
         if self.threshold is None:
             raise ValueError(f"{d / 'danalm.json'} has no threshold yet; pass one")
+        self.max_len = self.meta["model_config"]["max_seq_len"]
+        self.max_prompt = self.max_len - self.meta["max_new_tokens"]
 
     def predict(self, message: str) -> dict[str, Any]:
         """The answer, its confidence (the intent's share of the 21 intent likelihoods, D-030)
@@ -40,6 +46,8 @@ class Predictor:
         start = time.perf_counter()
         norm = self.meta["normalize"]
         prompt = prompt_ids(self.tok, self.chat, message, norm)
+        if len(prompt) + self.meta["max_new_tokens"] > self.max_len:
+            raise MessageTooLong(f"{len(prompt)} tokens; at most {self.max_prompt} fit")
         last, past = prefill(self.step, [prompt], self.step.empty(1))
         [(ids, finished)] = greedy_from(
             self.step, last, past, len(prompt), self.chat.eos, self.meta["max_new_tokens"]

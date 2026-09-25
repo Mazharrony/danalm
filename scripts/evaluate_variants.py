@@ -85,7 +85,7 @@ def choose(p: dict[str, Any], passing: list[str], sizes: dict[str, int]) -> tupl
     if not lat_path.exists():
         raise SystemExit(f"a size tie between {tied}: run scripts/benchmark_latency.py first")
     lat = json.loads(lat_path.read_text(encoding="utf-8"))
-    best = min(tied, key=lambda v: lat[f"onnx-{v}"]["threads_4"]["full_median_s"])
+    best = min(tied, key=lambda v: lat[f"onnx-{v}"]["threads_4"]["full"]["median_s"])
     return (
         best,
         f"within {100 * p['rule']['size_tie']:.0f}% in size of {tied}: the lowest median latency",

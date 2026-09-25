@@ -1,0 +1,40 @@
+# CI (Phase 7, D-034): lint, unit tests, the smoke evaluation of the deployment path on a tiny
+# model, and the service image. Data and models are never in the repository, so nothing here
+# trains or scores DanaLM itself.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10
+      - name: Install (CPU PyTorch on Linux, from uv.lock)
+        run: uv sync --frozen
+      - name: Lint
+        run: |
+          uv run ruff check .
+          uv run black --check .
+      - name: Unit tests
+        run: uv run pytest -q
+      - name: Smoke evaluation (tiny model through export, INT8/INT4 and the predictor)
+        run: uv run python scripts/ci_smoke.py
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build the service image
+        run: docker build -t danalm-serve .
+      - name: The service imports inside the image (no model, no PyTorch)
+        run: docker run --rm --entrypoint python danalm-serve -c "import danalm.serve.app; import importlib.util as u; assert u.find_spec('torch') is None"

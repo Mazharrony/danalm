@@ -11,7 +11,7 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
 |---|---|---|
 | 0. Setup | done | Every run records its config, seed, git commit and library versions |
 | 1. Tokenizer | done | 16,384-token byte-level BPE; 14% fewer tokens than Qwen3.5 on Gulf Arabic |
-| 2. Data | done, except the human test set | 1.495B pretraining tokens; 18,547 SFT examples |
+| 2. Data | done; the Arabic parts of the test set are open | 1.495B pretraining tokens; 18,547 SFT examples (20,572 after the Phase 5 clean-up and top-up) |
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
 | 5. SFT | done | Valid JSON 100%, intent accuracy 92.9% on the SFT validation split |
@@ -29,7 +29,7 @@ Results so far:
   tokenized, and checked by decoding sample documents back to their text
   ([results](docs/results/phase2_data.md)).
 - **SFT data (Phase 2b):** 18,547 customer-service examples covering 21 intents, in Gulf Arabic,
-  English, Arabizi and mixed text.
+  English, Arabizi and mixed text. Phase 5 cleaned and extended them to 20,572 (see below).
   - A local Qwen3.5-35B-A3B teacher wrote them. Arabizi messages are answered in Gulf Arabic
     script (D-023).
   - The `other` intent adds 491 real out-of-scope questions from CLINC150 and MASSIVE (D-024).
@@ -271,4 +271,5 @@ recorded command with `--config runs/<run>/config.yaml`.
 - **Code:** [Apache-2.0](LICENSE).
 - **Data:** each source keeps its own licence; see [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).
   No data is stored in this repository.
-- **Model weights:** licence to be decided after the Phase 2 review of the training-data licences.
+- **Model weights:** not published yet. The licence will be chosen before release, in line with
+  the training-data licences in [docs/DATA_LEDGER.md](docs/DATA_LEDGER.md).

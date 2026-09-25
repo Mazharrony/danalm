@@ -1075,6 +1075,9 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     - A diagnostic run right after (a scratch script, not part of the protocol) measured the
       unchanged Phase 5 model at 25 tokens per second on the CPU, against 60 in D-032. The new
       model ran at 23 tokens per second.
+    - **Cause, found in Phase 7:** Windows power throttling (EcoQoS) of background processes.
+      With throttling turned off for the measuring process alone, the same model ran at 62.0
+      tokens per second; with the default policy before and after, at 24.5 and 24.3 (D-034).
     - One real change: the new model's answers are about 20% longer (47 tokens on average on
       the test set, against 39). On the same machine it needs about a quarter more time per
       message.
@@ -1089,3 +1092,106 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       during this round.
     - One test reply contains a broken word ("onwellowing").
   - **Time:** the teacher steps ran from 11:42 to 12:42 and the GPU steps from 12:43 to 13:36.
+
+## D-034 · Phase 7 · Quantization and deployment, with the rules fixed before any result
+
+- **Decision:** the owner said "go" for Phase 7 on 2026-09-25. The model is the D-033 model
+  (`sft-selected-5b.json`). Everything below is fixed before any quantized model is scored.
+- **Runtime: ONNX Runtime on the CPU.**
+  - It runs the same graph on servers, in Docker, and on phones (ONNX Runtime Mobile).
+  - Its quantizers cover both INT8 and INT4.
+  - The confidence (D-030) needs the likelihood of all 21 intent names. With our own step graph
+    that is a single extra batched step.
+  - Alternatives considered:
+    - **GGUF/llama.cpp.** Our RoPE rotates adjacent pairs, which is llama.cpp's own layout, so a
+      conversion is possible. It is deferred: llama.cpp does not know our tokenizer, and scoring
+      21 continuations there needs a compiled Python binding.
+    - **Static INT8 with calibration.** Dynamic INT8 needs no calibration data and is the usual
+      choice for transformer weights.
+- **KV cache.**
+  - `DanaLM.step(input_ids, positions, past)` returns the logits and the updated keys and
+    values.
+  - Attention uses an explicit position mask. `is_causal` would be wrong for a single new token
+    attending to a longer cache.
+  - The training path does not change.
+  - One ONNX graph serves both reading the prompt (with an empty cache) and generating one token
+    at a time.
+  - The output projection gets its own copy of the tied embedding. Otherwise the quantizers skip
+    it, because its weight is not a constant.
+  - A feasibility check on a tiny random model matched PyTorch to 1.2e-7 and gave the same
+    greedy tokens, for INT8 and INT4 as well.
+- **Variants:**
+  - `onnx-fp32`: the reference export.
+  - `onnx-int8`: dynamic INT8 (`quantize_dynamic`, per-channel signed weights). It covers every
+    MatMul weight, including the output projection.
+  - `onnx-int4`: 4-bit weights (`MatMulNBitsQuantizer`, block 32, symmetric, accuracy level 4,
+    i.e. INT8 compute). It covers every MatMul weight, including the output projection.
+  - The input embedding table stays float32 in all of them.
+  - **One fallback per quantized variant, and no further tuning:** if a variant fails the rule
+    below, the same variant is built once more with the output projection left in float32.
+- **Checks on the development sets only:** the SFT validation split (957) and the real dev set
+  (804). The reference is PyTorch float32 on the CPU, without the cache (the decoding of D-029).
+  - The PyTorch KV-cache path and `onnx-fp32` must each give the same answer as the reference
+    on at least 99.5% of these messages. Every difference is listed.
+  - Every variant reports these on both sets:
+    - valid JSON, intent accuracy and macro-F1, reply language;
+    - agreement with the reference (same intent, same answer);
+    - coverage at its own threshold, fixed on the real dev set as in D-033 (95% target);
+    - file size.
+- **Rule for a quantized variant.** On both development sets:
+  - its intent accuracy is at most 1.0 point below `onnx-fp32`'s;
+  - valid JSON ≥ 99%;
+  - reply language ≥ 99%.
+- **What gets deployed:**
+  - The smallest variant that passes, by file size on disk.
+  - Variants within 10% of each other in size are decided by the lower median latency: full
+    prediction, 4 threads.
+  - If no quantized variant passes, `onnx-fp32` is deployed, and the result page says so.
+- **Test set:** once the choice is committed, the human test set (the English part, SHA-256
+  checked) is scored once per variant and once for PyTorch float32 on the CPU. That gives
+  accuracy before and after quantization.
+  - Qwen judges the deployed variant's replies with the D-032 prompt.
+  - These numbers are reported and never change the choice.
+- **Latency protocol:**
+  - 100 development messages: a seeded sample (seed 42), 50 from the SFT validation split (all
+    varieties) and 50 from the real dev set. The test set is not used.
+  - Batch 1 on the CPU, with 4 threads (as D-032) and with 1 thread (closer to a phone core).
+    3 warm-up messages. Each variant runs in its own process.
+  - Measured:
+    - median and p95 per message, for the answer alone and for the full prediction (answer plus
+      confidence);
+    - answer tokens per second;
+    - peak process memory, load time and file size.
+  - The table includes PyTorch float32 without the cache, the setting of D-032, measured in the
+    same session.
+  - On Windows, each measuring process turns off power throttling for itself, and the output
+    records it.
+    - Reason: during D-033 the default policy slowed the unchanged Phase 5 model from 62.0 to
+      24.5 tokens per second.
+    - No system setting is changed.
+- **Deployment pieces:**
+  - **Torch-free inference package (`danalm.infer`).** Text normalization, the chat format and
+    answer parsing move to torch-free modules, re-exported from their old places. The server
+    needs only numpy, tokenizers, onnxruntime and PyYAML.
+  - **FastAPI service.**
+    - `POST /predict` returns intent, reply, confidence and a route: on the device when the
+      answer is valid JSON and its confidence clears the threshold, otherwise escalate.
+    - It also returns the PII-masked message, which is what may leave the device. The model
+      already sees masked text: `normalize` masks PII.
+    - `GET /health` reports the model and its SHA-256.
+    - Raw messages are never logged.
+  - **Dockerfile:** a slim Python image without PyTorch. The model directory is mounted at run
+    time, because models are never committed.
+  - **GitHub Actions CI:**
+    - lint, the unit tests, and a Docker build;
+    - a small end-to-end evaluation on a tiny model trained in CI: export, INT8, service
+      predictor, metrics.
+    - An evaluation of the real model in CI needs the model published on the Hugging Face Hub.
+      That is the owner's decision in Phase 8.
+  - **Gradio app for Hugging Face Spaces:** prepared and tested locally. Publishing it needs the
+    owner's account.
+- **Time:** no job is expected to run over 2 h.
+  - The PyTorch float32 reference without a cache takes about 30 minutes of CPU time on the
+    development sets.
+  - Each ONNX variant takes a few minutes.
+  - The latency runs take about 15 minutes.

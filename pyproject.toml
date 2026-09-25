@@ -27,6 +27,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+demo = [
+    "gradio>=5",
+]
 dev = [
     "black>=26.5",
     "httpx>=0.28",

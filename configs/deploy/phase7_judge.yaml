@@ -1,0 +1,9 @@
+# Phase 7 (D-034): Qwen judges the deployed variant's test replies with the D-032 prompt.
+# Run after scripts/evaluate_variants.py phase7.split=test, which writes the answers:
+#   uv run python scripts/evaluate_teacher.py --config configs/deploy/phase7_judge.yaml
+base: ../eval/phase6.yaml
+run_name: phase7-judge
+
+phase6:
+  out_dir: ${paths.artifacts_dir}/eval/phase7-judge
+  reuse_answers_from: ${paths.artifacts_dir}/eval/phase6/teacher_answers.jsonl   # the zero-shot intents: identical requests

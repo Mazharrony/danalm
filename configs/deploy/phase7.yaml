@@ -25,6 +25,9 @@ phase7:
     size_tie: 0.10             # within 10% in size: the lower median latency decides
   latency_results: ${paths.artifacts_dir}/eval/phase7/latency.json   # needed only for a size tie
   selected: ${paths.artifacts_dir}/deploy/selected.json
+  space_dir: ${paths.artifacts_dir}/space   # scripts/build_space.py
+  judge_dir: ${paths.artifacts_dir}/eval/phase7-judge   # the deployed variant's test answers for the Qwen judge
+  results_md: docs/results/phase7_deploy.md
   test_set: ${paths.data_dir}/test/test_set.jsonl
   test_sha256: e6961fd244c57f2db1460052586b1dfd8183cc3269bad774577ef87660248397   # D-032
 

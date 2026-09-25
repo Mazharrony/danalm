@@ -199,6 +199,11 @@ def main() -> None:
     else:
         dev = json.loads((out / "dev_metrics.json").read_text(encoding="utf-8"))
         cover = {s: {k: covered(preds[s][k], dev["thresholds"][s]) for k in sets} for s in systems}
+        # the deployed variant's answers, where scripts/evaluate_teacher.py reads them (D-032 judge)
+        chosen = json.loads(Path(p["selected"]).read_text(encoding="utf-8"))["variant"]
+        judge_dir = Path(p["judge_dir"])
+        judge_dir.mkdir(parents=True, exist_ok=True)
+        write_jsonl(judge_dir / "danalm_predictions.jsonl", preds[f"onnx-{chosen}"]["test"])
         result = {"split": split, "power_throttling_off": throttling_off, "checkpoint": checkpoint,
                   "test_sha256": p["test_sha256"], "metrics": metrics, "agreement": agree,
                   "coverage_at_dev_threshold": cover,

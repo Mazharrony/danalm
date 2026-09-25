@@ -22,20 +22,29 @@ How it is built:
 | Size | 62.1M parameters, 237 MB in float32 | CAMeLBERT-mix classifier: 110M; Qwen3.5-35B-A3B |
 | Valid JSON | **100%** | — |
 | Reply in the customer's language | **100%** | — |
-| Intent accuracy, 64 real English test messages | **56%** | CAMeLBERT 47%, Qwen zero-shot 89% |
+| Intent accuracy, 64 real English test messages | **84%** (56% before real training data) | CAMeLBERT 47%, Qwen zero-shot 89% |
+| Intent accuracy, 804 held-out real messages (dev set) | 94% | the model before real training data: 66% |
 | Intent accuracy, synthetic validation set (957) | 93% | CAMeLBERT 93% |
-| CPU speed (4 threads, not optimised yet) | 0.63 s per message | — |
+| CPU speed (4 threads, not optimised yet) | 0.63 s per message, measured on the model before real training data | — |
 
-The main open problem is the drop from 93% on synthetic data to 56% on real messages. The
-training messages were written by a teacher model, and they don't match how real customers
-write.
+The first model, trained only on teacher-written messages, fell from 93% on synthetic data to
+56% on real messages. Training on 2,921 real, openly licensed customer messages (D-033) raised it
+to 84%, close to the 35B teacher's 89%. Part of that gain is style the test messages share with
+the new training data, since both come from the same two public datasets.
+
+What is still open:
+
+- **Gulf Arabic, Arabizi and mixed test messages.** Those parts of the test set need a native
+  speaker, and they are the real check.
+- **Confidence.** At the chosen threshold, 87% of the answered test messages are right, short of
+  the 95% bar.
+- **Latency.** The current model writes about 20% longer answers than the one measured above.
 
 Next steps:
 
-1. Train on real, openly licensed customer messages.
-2. Quantize and deploy (Phase 7).
-3. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set, which need a native
-   speaker.
+1. Quantize and deploy (Phase 7), and measure latency again there.
+2. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set.
+3. Make the confidence trustworthy on real messages.
 
 ## Progress
 
@@ -43,11 +52,11 @@ Next steps:
 |---|---|---|
 | 0. Setup | done | Every run records its config, seed, git commit and library versions |
 | 1. Tokenizer | done | 16,384-token byte-level BPE; 14% fewer tokens than Qwen3.5 on Gulf Arabic |
-| 2. Data | done; the Arabic parts of the test set are open | 1.495B pretraining tokens; 18,547 SFT examples (20,572 after the Phase 5 clean-up and top-up) |
+| 2. Data | done; the Arabic parts of the test set are open | 1.495B pretraining tokens; 18,547 SFT examples (20,572 after the Phase 5 clean-up and top-up, 24,263 with the real messages of D-033) |
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
-| 5. SFT | done | Valid JSON 100%, intent accuracy 92.9% on the SFT validation split |
-| 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 56% (CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
+| 5. SFT | done; a second round added real messages (D-033) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages |
+| 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
 | 7. Quantization and deployment | later | |
 | 8. Presentation | later | |
 
@@ -97,16 +106,38 @@ Results by phase:
   - The CAMeLBERT-mix classifier baseline scores 93.3% on the same split. These numbers
     come from synthetic validation data. The honest score comes from the human test set in
     Phase 6 ([results](docs/results/phase5_sft.md)).
+- **SFT with real messages (Phase 5b, D-033):** Phase 6 showed the synthetic data was the
+  weakness, so this round added real customer messages. Every rule was fixed before any data
+  was fetched ([results](docs/results/phase5b_real.md)).
+  - The messages come from the *train* splits of Banking77 and CLINC150 (CC-BY), mapped to our
+    intents. Near copies of test messages were dropped first.
+  - 804 of them are held out as a real dev set. It is used only to choose the model and its
+    confidence threshold.
+  - Qwen wrote the replies. The blind label judge and the reply check filtered them, which left
+    2,921 real examples.
+  - A style top-up added 770 short, lowercase, typo-laden English messages.
+  - The D-029 recipe ran on both pretraining bases × two learning rates.
+  - The chosen model scores 94.4% on the real dev set, where the Phase 5 model scores 66.4%. On
+    the synthetic validation split it scores 93.1%, and every language variety holds.
+- **Evaluation (Phase 6, English part):** the 64 human test messages, scored once per model with
+  the same protocol.
 
-- **Evaluation (Phase 6, English part):** on the 64 human test messages DanaLM reaches 56.2%
-  intent accuracy, with 100% valid JSON and 100% replies in the right language. The
-  CAMeLBERT-mix classifier reaches 46.9% and Qwen3.5-35B-A3B zero-shot 89.1%
-  ([results](docs/results/phase6_eval.md)).
-  - It meets three of the four D-030 bars. It misses coverage: its confidence is not
-    calibrated on real messages.
-  - The large drop from the synthetic validation split (93%) shows the main weakness: the
-    synthetic training data does not match how real customers write.
-  - Latency: 0.63 s per message on the CPU (float32, 4 threads), before any optimisation.
+  | | Intent accuracy | Macro-F1 | Valid JSON | Reply language |
+  |---|---:|---:|---:|---:|
+  | DanaLM, Phase 5 model ([results](docs/results/phase6_eval.md)) | 56.2% | 57.8% | 100% | 100% |
+  | DanaLM after real messages ([results](docs/results/phase6b_eval.md)) | **84.4%** | 85.5% | 100% | 100% |
+  | CAMeLBERT-mix classifier (110M) | 46.9% | 46.4% | – | – |
+  | Qwen3.5-35B-A3B, zero-shot | 89.1% | 90.3% | – | – |
+
+  - Real messages fixed 19 of the first model's errors and added 1 (McNemar p = 0.00004). The
+    macro-F1 gap to Qwen, −4.7 points, is inside its 95% interval (−16 to +6).
+  - Caveat: the test messages come from the test splits of the same two datasets as the new
+    training messages. Part of the gain is their shared style.
+  - Three of the four D-030 bars are met. Coverage is still missed: at the threshold fixed on
+    the real dev set, 87% of the answered test messages are right, not 95%.
+  - Latency: 0.63 s per message on the CPU (float32, 4 threads) for the Phase 5 model, before
+    any optimisation. The second measurement ran while the machine was slowed, so it is not
+    comparable (see D-033).
 
 Open: **the Arabic, Arabizi and mixed parts of the human test set** need a native Gulf Arabic
 speaker (see [Test data](#test-data)).
@@ -281,6 +312,21 @@ Stop the teacher server before the training steps; the Qwen steps start it thems
 | `uv run python scripts/sft.py --config configs/sft/train.yaml train.lr=3.0e-4 run_name=sft-r1-lr3e-4` | One SFT run (5 epochs, evaluated after each) | ~6 min |
 | `uv run python scripts/sft_report.py --config configs/sft/report.yaml` | Applies the D-029 rule to all runs, writes the results page and `artifacts/checkpoints/sft-selected.json` | seconds |
 | `uv run python scripts/baseline_camelbert.py --config configs/eval/baseline_camelbert.yaml` | The CAMeLBERT-mix intent classifier baseline (Phase 6, D-027) | ~2 min |
+
+### Phase 5b: real messages (D-033)
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run python scripts/fetch_labelled.py --config configs/sft/real.yaml` | Fetches the Banking77 and CLINC150 train splits and maps them to our intents (and writes the ledger) | seconds |
+| `uv run python scripts/split_real.py --config configs/sft/real.yaml` | Drops near copies of test messages, holds out the real dev set, drops near copies of dev messages, caps each intent at 500 | seconds |
+| `uv run python scripts/write_replies.py --config configs/sft/real.yaml`, then `verify_sft.py` with the same config | Qwen replies, then the blind label judge | ~30 min, ~6 min |
+| `uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml check.scope=all check.data_dir=data/sft/sft-real-replies "check.splits=[verified]" check.out_dir=data/sft/reply-check-real` | Qwen proofreads every reply | ~12 min |
+| `uv run python scripts/generate_sft.py --config configs/sft/style_en.yaml`, then `verify_sft.py` and `check_replies.py` the same way (`check.data_dir=data/sft/sft-style-en`, `check.out_dir=data/sft/reply-check-style`) | English style top-up | ~8 min, ~2 min, ~4 min |
+| `uv run python scripts/assemble_sft_v4.py --config configs/sft/v4.yaml` | Builds `data/sft/final-v4` | seconds |
+| `uv run python scripts/sft.py --config configs/sft/train_real.yaml train.lr=3.0e-4 run_name=sft-r3-second-lr3e-4 train.init=artifacts/checkpoints/pretrain-second/model.pt` | One SFT run, evaluated on the SFT validation split and the real dev set after each epoch (four runs: two bases × lr 3e-4 and 1e-3) | ~10 min |
+| `uv run python scripts/evaluate_dev.py --config configs/sft/report_real.yaml` | The Phase 5 model on the real dev set, for comparison | ~1 min |
+| `uv run python scripts/real_round_report.py --config configs/sft/report_real.yaml` | Applies the D-033 rule, writes the results page and `artifacts/checkpoints/sft-selected-5b.json` | seconds |
+| the three Phase 6 commands with `--config configs/eval/phase6b.yaml` | Scores the chosen model on the human test set with the D-032 protocol | ~5 min |
 
 ### Phase 6: evaluation
 

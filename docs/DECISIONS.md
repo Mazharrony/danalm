@@ -1012,3 +1012,80 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     of any English gain will come from training on their style. The Gulf Arabic, Arabizi and
     mixed test parts, still unwritten, remain the real check.
 - **Time:** about 1 h of teacher time and 40 minutes of GPU time. No single job runs over 2 h.
+- **Result (2026-09-25; [results/phase5b_real.md](results/phase5b_real.md),
+  [results/phase6b_eval.md](results/phase6b_eval.md)):**
+  - **Data:**
+    - 5,391 real messages were mapped (the plan estimated 5,394).
+      - 31 near copies of test messages were dropped.
+      - 804 messages became the real dev set.
+      - 733 training candidates were dropped as near copies of dev messages, leaving 3,315.
+    - Qwen wrote replies for 3,272 of them. The filters dropped 43, of which 42 were replies
+      that claimed an action.
+    - The label judge agreed with 3,059 (93.5%). Most disagreements were borderline cases, such
+      as the minimum payment on an electricity bill (loans_and_credit or bill_inquiry, 37).
+      The reply check marked 4 replies broken.
+    - Style top-up:
+      - 889 examples from 126 requests. The judge agreed with 790 (88.9%) and the reply check
+        marked 14 broken.
+      - The messages are short (median 7 words), all start in lowercase, and 2% mention the
+        UAE.
+    - final-v4 adds 2,921 real examples (134 others repeated an existing message) and 770 style
+      examples (10 others nearly copied a test or dev message). That makes 24,263 training
+      examples; the validation split stays at 957.
+    - Both reply checks judged both canaries OK: 0 of 2 caught. The canaries are broken Gulf
+      Arabic, so they don't test the check on English replies. How much the check misses on
+      English replies is still unknown.
+  - **Selection:** second pass, lr 3e-4, epoch 3.
+    - Real dev set: 94.4% intent accuracy (macro-F1 94.5%). The Phase 5 model scores 66.4% on
+      the same 804 messages.
+    - The top of the sweep is flat: two other checkpoints came within 0.2 points. The
+      tie-break (SFT-validation accuracy) decided.
+    - SFT validation: 93.1% (Phase 5 model: 92.9%). Per variety: Gulf Arabic 91.6% (92.0%),
+      Arabizi 91.7% (92.5%), mixed 93.8% (91.9%), English 95.6% (94.2%).
+    - At confidence ≥ 0.592 it answers 97.8% of the dev messages, with 95.0% accuracy.
+  - **Test (English part, 64 messages, scored once with the D-032 protocol):**
+
+    | System | Intent accuracy (95% interval) | Macro-F1 |
+    |---|---:|---:|
+    | DanaLM after D-033 | **84.4%** (74–91%) | 85.5% |
+    | DanaLM, Phase 5 model (D-032) | 56.2% (44–68%) | 57.8% |
+    | CAMeLBERT-mix classifier (110M) | 46.9% (35–59%) | 46.4% |
+    | Qwen3.5-35B-A3B, zero-shot (the same answers as in D-032) | 89.1% (79–95%) | 90.3% |
+
+    - On the same messages, the new model fixed 19 of the old model's errors and made 1 new one
+      (exact McNemar test, p = 0.00004).
+    - The macro-F1 gap to Qwen is −4.7 points (interval −16.0 to +6.0). At this sample size, the
+      gap to the 35B teacher is no longer clear. Against CAMeLBERT the gap is +39.1 points.
+    - Valid JSON 100% and reply language 100%. Qwen judged 92.2% of the replies good (D-032:
+      89.1%).
+    - **Bars:** valid JSON, macro-F1 and reply language are met. **Coverage is still missed.**
+      - At the real-dev threshold (0.592), the model answers 95.3% of the test messages, and
+        86.9% of those answers are right.
+      - The model is right more often on the real dev set (94.4%) than on the test set (84.4%),
+        so the threshold set on the dev set is too low for the test messages.
+      - 4 of the 10 errors have confidence ≥ 0.9 (D-032: 14 of 28).
+    - Without the 3 disputed rows: 85.2%.
+    - The weakest intents are unrecognized_transaction (4 of 7 right) and balance_or_statement
+      (4 of 6).
+  - **Latency: not comparable with D-032.**
+    - The protocol measured 1.95 s per message on the CPU and 1.07 s on the GPU. But from about
+      13:12 the machine ran slower:
+      - the speed per token fell 2.5× on both the CPU and the GPU;
+      - SFT evaluations in the same period took 150 s instead of 85 s.
+    - A diagnostic run right after (a scratch script, not part of the protocol) measured the
+      unchanged Phase 5 model at 25 tokens per second on the CPU, against 60 in D-032. The new
+      model ran at 23 tokens per second.
+    - One real change: the new model's answers are about 20% longer (47 tokens on average on
+      the test set, against 39). On the same machine it needs about a quarter more time per
+      message.
+    - Phase 7 measures latency again, with the KV cache and quantization.
+  - **Caveat, as planned:** the test messages come from the test splits of the same datasets as
+    the new training messages. The Gulf Arabic, Arabizi and mixed test parts remain the real
+    check.
+  - **Known issues for the next data round:**
+    - About 2% of the English training replies say that an action is already done ("we have
+      logged/noted/forwarded this"): 2.1% in final-v3, 0.6% of the real-message replies and
+      2.6% of the style top-up. The claim filter doesn't catch these verbs. It was not changed
+      during this round.
+    - One test reply contains a broken word ("onwellowing").
+  - **Time:** the teacher steps ran from 11:42 to 12:42 and the GPU steps from 12:43 to 13:36.

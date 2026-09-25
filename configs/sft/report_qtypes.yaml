@@ -1,0 +1,36 @@
+# D-037: the selection and results page of the question-type round, and the reply-faithfulness
+# samples.
+#   uv run python scripts/evaluate_dev.py         --config configs/sft/report_qtypes.yaml   # the D-033 model on the question-type dev set
+#   uv run python scripts/qtype_round_report.py   --config configs/sft/report_qtypes.yaml
+#   uv run python scripts/faithfulness_sample.py  --config configs/sft/report_qtypes.yaml
+#   uv run python scripts/evaluate_teacher.py     --config configs/sft/judge_faithfulness_before.yaml   # and _after
+base: train_qtypes.yaml
+run_name: sft-report-qtypes
+
+report:
+  checkpoints_dir: ${paths.artifacts_dir}/checkpoints
+  runs:
+    "first pass, lr 3e-4": sft-r4-first-lr3e-4
+    "first pass, lr 1e-3": sft-r4-first-lr1e-3
+    "second pass, lr 3e-4": sft-r4-second-lr3e-4
+    "second pass, lr 1e-3": sft-r4-second-lr1e-3
+  min_sft_val: 0.909           # D-037 guards
+  min_real_dev: 0.934
+  tie: 0.01
+  real_dev: ${sft_data.extra_dev.qtype}   # evaluate_dev.py scores the D-033 model on the question-type dev set
+  baseline_checkpoint: ${paths.artifacts_dir}/checkpoints/sft-r3-second-lr3e-4/epoch_3.pt   # the D-033 model
+  baseline_out: ${paths.artifacts_dir}/eval/phase5c/d033_model_on_qtype_dev.json
+  previous_selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5b.json
+  split_stats:
+    Bitext: ${paths.data_dir}/sft/sft-qtypes-bitext/split_stats.json
+    MASSIVE: ${paths.data_dir}/sft/sft-qtypes-massive/split_stats.json
+  data_stats: ${paths.data_dir}/sft/final-v5/stats.json
+  sources: [qt-bitext, qt-massive, qt-grid]
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5c.json
+  plot: docs/results/phase5c_qtypes.png
+  results_md: docs/results/phase5c_qtypes.md
+  faithfulness:
+    per_set: 150
+    seed: 42
+    before_dir: ${paths.artifacts_dir}/eval/phase5c/faithfulness-d033
+    after_dir: ${paths.artifacts_dir}/eval/phase5c/faithfulness-chosen

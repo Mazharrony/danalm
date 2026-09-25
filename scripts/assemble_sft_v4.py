@@ -42,7 +42,10 @@ def main() -> None:
     keys = ["message", "intent", "reply", "variety", "lang", "domain"]
     base = {s: read_jsonl(Path(a["base_dir"]) / f"{s}.jsonl") for s in ("train", "val")}
 
-    guarded = [t["text"] for t in read_jsonl(a["test_set"])] + [r["message"] for r in read_jsonl(a["real_dev"])]  # fmt: skip
+    devs = (
+        [a["real_dev"]] if isinstance(a["real_dev"], str) else a["real_dev"]
+    )  # one file or several
+    guarded = [t["text"] for t in read_jsonl(a["test_set"])] + [r["message"] for d in devs for r in read_jsonl(d)]  # fmt: skip
     exact = {canonical(t, o["normalize"]) for t in guarded}
     lsh = MinHashLSH(threshold=o["near_dup_threshold"], num_perm=o["num_perm"])
     for n, t in enumerate(guarded):

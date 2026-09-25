@@ -1,0 +1,25 @@
+# D-037: the SFT data of the question-type round, data/sft/final-v5 = final-v4 + the Bitext and
+# MASSIVE messages with teacher replies + the Qwen question-type grid (training split only; the
+# validation split is unchanged). New messages that nearly copy a test, real-dev or
+# question-type-dev message are dropped.
+#   uv run python scripts/assemble_sft_v4.py --config configs/sft/v5.yaml
+base: v4.yaml
+run_name: sft-v5
+
+assemble:
+  base_dir: ${paths.data_dir}/sft/final-v4
+  out_dir: ${paths.data_dir}/sft/final-v5
+  sources:
+    - name: qt-bitext
+      verified: ${paths.data_dir}/sft/sft-qtypes-bitext-replies/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-qt-bitext/judged.jsonl
+    - name: qt-massive
+      verified: ${paths.data_dir}/sft/sft-qtypes-massive-replies/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-qt-massive/judged.jsonl
+    - name: qt-grid
+      verified: ${paths.data_dir}/sft/sft-qtypes-gen/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-qt-grid/judged.jsonl
+  real_dev:                    # every development set is guarded
+    - ${paths.data_dir}/sft/sft-real/dev.jsonl
+    - ${paths.data_dir}/sft/sft-qtypes-bitext/dev.jsonl
+    - ${paths.data_dir}/sft/sft-qtypes-massive/dev.jsonl

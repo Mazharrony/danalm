@@ -1,0 +1,7 @@
+# D-037: Qwen's D-032 reply judge on the D-033 model's replies to the faithfulness sample.
+#   uv run python scripts/evaluate_teacher.py --config configs/sft/judge_faithfulness_before.yaml
+base: ../eval/phase6.yaml
+run_name: phase5c-faithfulness-before
+
+phase6:
+  out_dir: ${paths.artifacts_dir}/eval/phase5c/faithfulness-d033

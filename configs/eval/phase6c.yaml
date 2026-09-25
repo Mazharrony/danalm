@@ -1,0 +1,20 @@
+# D-037: the question-type round's model on the same human test set, with the D-032 protocol.
+#   uv run python scripts/evaluate_test.py    --config configs/eval/phase6c.yaml
+#   uv run python scripts/evaluate_teacher.py --config configs/eval/phase6c.yaml
+#   uv run python scripts/phase6_report.py    --config configs/eval/phase6c.yaml
+base: phase6b.yaml
+run_name: phase6c-eval
+
+phase6:
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5c.json   # the threshold comes from the real dev set
+  out_dir: ${paths.artifacts_dir}/eval/phase6c
+  title: "Phase 6 results for the question-type round (D-037): the human test set, English part"
+  note: >-
+    This model adds about 10,000 examples of question types the earlier models had rarely seen
+    (status checks, how-to, conditions, costs, other countries, off-topic requests; D-037), from
+    Bitext, MASSIVE and the local Qwen teacher. Like D-033's model, it trained on real messages
+    from the train splits of Banking77 and CLINC150, whose test splits the English test set comes
+    from. Earlier results: [phase6_eval.md](phase6_eval.md), [phase6b_eval.md](phase6b_eval.md);
+    the CAMeLBERT and Qwen rows are the same systems (Qwen's zero-shot answers are reused).
+  model_label: "DanaLM (62M, question-type round)"
+  results_md: docs/results/phase6c_eval.md

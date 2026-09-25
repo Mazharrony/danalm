@@ -74,7 +74,10 @@ def main() -> None:
     intents = [i["name"] for i in load_intents(d["intents_file"])]
     rows = {s: read_jsonl(Path(d["data_dir"]) / f"{s}.jsonl") for s in ("train", "val")}
     # extra development sets, evaluated after every epoch but never trained on (D-033)
-    extra_dev = {name: read_jsonl(path) for name, path in (d.get("extra_dev") or {}).items()}
+    extra_dev = {
+        name: [r for p in ([path] if isinstance(path, str) else path) for r in read_jsonl(Path(p))]
+        for name, path in (d.get("extra_dev") or {}).items()
+    }  # a path or a list of paths
     enc = {s: [example_ids(tok, chat, r["message"], r["target"], d["normalize"]) for r in rs]
            for s, rs in rows.items()}  # fmt: skip
     prefix, conts = label_continuations(tok, intents)

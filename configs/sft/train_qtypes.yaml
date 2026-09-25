@@ -1,0 +1,11 @@
+# D-037: SFT on final-v5, evaluated after every epoch on the SFT validation split, the real dev set
+# (D-033) and the question-type dev set (Bitext + MASSIVE hold-outs). Never trained on.
+#   uv run python scripts/sft.py --config configs/sft/train_qtypes.yaml train.lr=3.0e-4 run_name=sft-r4-first-lr3e-4
+base: train_real.yaml
+run_name: sft-qtypes
+
+sft_data:
+  data_dir: ${paths.data_dir}/sft/final-v5
+  extra_dev:
+    real: "${paths.data_dir}/sft/sft-real/dev.jsonl"
+    qtype: ["${paths.data_dir}/sft/sft-qtypes-bitext/dev.jsonl", "${paths.data_dir}/sft/sft-qtypes-massive/dev.jsonl"]

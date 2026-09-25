@@ -33,6 +33,7 @@ from danalm.model.transformer import DanaLM, ModelConfig
 from danalm.sft.data import ChatTokens, prompt_ids
 from danalm.sft.evaluate import Autocast, evaluate, greedy_answers, intent_metrics
 from danalm.teacher.server import assert_teacher_stopped
+from danalm.utils.power import disable_power_throttling
 from danalm.utils.seed import set_seed
 
 
@@ -81,6 +82,7 @@ def latency(model: torch.nn.Module, prompts: list[list[int]], eos: int, max_new:
 def main() -> None:
     cfg = config_from_cli(__doc__)
     assert_teacher_stopped(cfg["teacher"]["host"], cfg["teacher"]["port"])
+    throttling_off = disable_power_throttling()  # timings only (D-034); Windows only
     set_seed(cfg["seed"], cfg["deterministic"])
     p, d, ev = cfg["phase6"], cfg["sft_data"], cfg["eval"]
     out = Path(p["out_dir"])
@@ -148,6 +150,7 @@ def main() -> None:
         "danalm_checkpoint": selected["checkpoint"], "danalm": metrics,
         "camelbert": intent_metrics(gold, [c["pred_intent"] for c in cb_preds]),
         "latency": {"cpu_float32": cpu, "gpu_bf16": gpu, "weights_mb_float32": weights_mb,
+                    "power_throttling_off": throttling_off,
                     "cpu_threads": p["latency"]["cpu_threads"], "cpu": platform.processor() or platform.machine()},
     }  # fmt: skip
     text = json.dumps(result, indent=2)

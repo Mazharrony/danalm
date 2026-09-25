@@ -1,9 +1,10 @@
 """Score one SFT checkpoint on a development JSONL (message/intent/variety) with the D-029 metrics.
 
 Usage: uv run python scripts/evaluate_dev.py --config configs/sft/report_real.yaml
-Scores report.baseline_checkpoint (the Phase 5 model) on report.real_dev, so the real-message round
-(D-033) can be compared with it on the same messages. Writes report.baseline_out (metrics and
-predictions). The human test set is not used. Refuses to run while the teacher server is up.
+Scores report.baseline_checkpoint (an earlier model) on report.real_dev (a file or a list of
+files), so that a later round (D-033, D-037) can be compared with it on the same messages. Writes
+report.baseline_out (metrics and predictions). The human test set is not used. Refuses to run
+while the teacher server is up.
 """
 
 import json
@@ -24,8 +25,10 @@ def main() -> None:
     cfg = config_from_cli(__doc__)
     assert_teacher_stopped(cfg["teacher"]["host"], cfg["teacher"]["port"])
     r, d, ev = cfg["report"], cfg["sft_data"], cfg["eval"]
-    with open(r["real_dev"], encoding="utf-8") as fh:
-        rows = [json.loads(line) for line in fh]
+    rows = []
+    for path in [r["real_dev"]] if isinstance(r["real_dev"], str) else r["real_dev"]:
+        with open(path, encoding="utf-8") as fh:
+            rows += [json.loads(line) for line in fh]
     state = torch.load(r["baseline_checkpoint"], map_location="cpu", weights_only=True)
     model = DanaLM(ModelConfig(**state["model_config"])).to("cuda").eval()
     model.load_state_dict(state["model"])

@@ -1,0 +1,9 @@
+# D-037: the same judge on the chosen model's replies to the same messages. Qwen's zero-shot
+# intents are identical requests, so they are reused from the first run.
+#   uv run python scripts/evaluate_teacher.py --config configs/sft/judge_faithfulness_after.yaml
+base: ../eval/phase6.yaml
+run_name: phase5c-faithfulness-after
+
+phase6:
+  out_dir: ${paths.artifacts_dir}/eval/phase5c/faithfulness-chosen
+  reuse_answers_from: ${paths.artifacts_dir}/eval/phase5c/faithfulness-d033/teacher_answers.jsonl

@@ -25,7 +25,7 @@ report:
     Bitext: ${paths.data_dir}/sft/sft-qtypes-bitext/split_stats.json
     MASSIVE: ${paths.data_dir}/sft/sft-qtypes-massive/split_stats.json
   data_stats: ${paths.data_dir}/sft/final-v5/stats.json
-  sources: [qt-bitext, qt-massive, qt-grid]
+  sources: [qt-bitext, qt-massive, qt-grid, qt-grid2]
   selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5c.json
   plot: docs/results/phase5c_qtypes.png
   results_md: docs/results/phase5c_qtypes.md

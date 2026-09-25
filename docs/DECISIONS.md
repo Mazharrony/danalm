@@ -1388,3 +1388,12 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   - The coverage threshold is fixed on the real dev set, as in D-033.
   - The question-type dev set is 1,298 messages: 1,038 from Bitext and 260 from MASSIVE. As
     with the real dev set of D-033, it keeps the mapped labels unfiltered.
+- **Amendment 2, before the top-up grid below was generated (2026-09-25, 18:25):**
+  - In the grid's first 60 requests the generator's filters kept 89% of the Gulf Arabic
+    examples, but only 35% of the Arabizi and 22% of the mixed ones. Qwen wrote whole messages
+    in Arabic script.
+  - The main grid runs unchanged. A top-up grid (`configs/sft/qtypes_gen2.yaml`) then follows,
+    with the same cells and rules. It repeats each variety's style rule at the end of the prompt,
+    with 3 requests per cell for Arabizi and mixed and 1 for Gulf Arabic (728 requests).
+  - The top-up gets the same judge, reply check and assembly. It aims at the ~10,000 new
+    examples of this decision.

@@ -19,6 +19,9 @@ assemble:
     - name: qt-grid
       verified: ${paths.data_dir}/sft/sft-qtypes-gen/verified.jsonl
       reply_check: ${paths.data_dir}/sft/reply-check-qt-grid/judged.jsonl
+    - name: qt-grid2                # D-037 amendment 2: the top-up grid
+      verified: ${paths.data_dir}/sft/sft-qtypes-gen2/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-qt-grid2/judged.jsonl
   real_dev:                    # every development set is guarded
     - ${paths.data_dir}/sft/sft-real/dev.jsonl
     - ${paths.data_dir}/sft/sft-qtypes-bitext/dev.jsonl

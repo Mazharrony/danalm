@@ -1,0 +1,362 @@
+# D-037 amendment 2: a top-up of the question-type grid. Same cells and rules as qtypes_gen.yaml,
+# but each variety's language rule is repeated at the end of the prompt (the main grid's Arabizi
+# and mixed requests often came back in Arabic script), with 3 requests per cell for Arabizi and
+# mixed and 1 for Gulf Arabic (728 requests).
+#   uv run python scripts/generate_sft.py --config configs/sft/qtypes_gen2.yaml
+#   uv run python scripts/verify_sft.py   --config configs/sft/qtypes_gen2.yaml
+base: full.yaml
+run_name: sft-qtypes-gen2
+seed: 3038                     # fresh personas, tones and sampling seeds
+
+sft:
+  only_varieties: [gulf_arabic, arabizi, mixed]
+  question_types:              # D-037; joined to the intent's message rule
+    status: "The customer asks about the status or result of something they already requested or that is already in progress: whether it arrived, went through, was processed or is still pending."
+    how_to: "The customer asks how to do something or whether something is possible (for example \"how do I ...\", \"can I ...\", \"is it possible to ...\")."
+    conditions: "The customer asks about conditions, rules, limits, requirements or how long something takes."
+    cost: "The customer asks what something costs, or whether there is a fee or charge for it."
+    abroad: "The message mentions another country (for example India, Pakistan, the Philippines, Egypt, Bangladesh or the UK), a foreign currency or travel; unless the intent is roaming, it is not about roaming."
+  message_rules:               # restate the intent definitions, as configs/sft/topup.yaml
+    order_status: " The order is still on its way: the customer asks where it is, wants to track it, or says it is late. Nothing says it was delivered, that a delivery attempt failed, or that they want to cancel or get a refund."
+    failed_delivery: " Make it clear that a delivery attempt already failed (the courier could not find the address or reach the customer), the parcel was sent back, or the app shows delivered but nothing arrived. Not only late."
+    cancel_order: " The customer clearly asks to cancel the order, even if they also complain that it is late."
+    refund_request: " The customer clearly asks for their money back or for compensation."
+    card_not_working: " The card is declined, blocked or not working at an ATM or shop, or a new card has not arrived. It is not lost or stolen."
+    lost_or_stolen_card: " The card was lost or stolen, and the customer wants it blocked or replaced."
+    transfer_issue: " It is about the customer's own money transfer or payment that failed, is pending or delayed, or was not received."
+    unrecognized_transaction: " It is about a charge or transaction the customer does not recognise, suspects is fraud, or wants to dispute."
+    handoff_to_human: " The customer asks for a human agent or a manager, or wants to file a formal complaint."
+    other: " A greeting, thanks, small talk, or a question outside banking, telecom and delivery (for example exchange rates or opening a new account). The customer does not ask for a person."
+  cell_requests:
+    card_not_working/gulf_arabic/status: 1
+    card_not_working/gulf_arabic/how_to: 1
+    card_not_working/gulf_arabic/conditions: 1
+    card_not_working/gulf_arabic/cost: 1
+    card_not_working/gulf_arabic/abroad: 1
+    card_not_working/arabizi/status: 3
+    card_not_working/arabizi/how_to: 3
+    card_not_working/arabizi/conditions: 3
+    card_not_working/arabizi/cost: 3
+    card_not_working/arabizi/abroad: 3
+    card_not_working/mixed/status: 3
+    card_not_working/mixed/how_to: 3
+    card_not_working/mixed/conditions: 3
+    card_not_working/mixed/cost: 3
+    card_not_working/mixed/abroad: 3
+    lost_or_stolen_card/gulf_arabic/status: 1
+    lost_or_stolen_card/gulf_arabic/how_to: 1
+    lost_or_stolen_card/gulf_arabic/conditions: 1
+    lost_or_stolen_card/gulf_arabic/cost: 1
+    lost_or_stolen_card/gulf_arabic/abroad: 1
+    lost_or_stolen_card/arabizi/status: 3
+    lost_or_stolen_card/arabizi/how_to: 3
+    lost_or_stolen_card/arabizi/conditions: 3
+    lost_or_stolen_card/arabizi/cost: 3
+    lost_or_stolen_card/arabizi/abroad: 3
+    lost_or_stolen_card/mixed/status: 3
+    lost_or_stolen_card/mixed/how_to: 3
+    lost_or_stolen_card/mixed/conditions: 3
+    lost_or_stolen_card/mixed/cost: 3
+    lost_or_stolen_card/mixed/abroad: 3
+    balance_or_statement/gulf_arabic/status: 1
+    balance_or_statement/gulf_arabic/how_to: 1
+    balance_or_statement/gulf_arabic/conditions: 1
+    balance_or_statement/gulf_arabic/cost: 1
+    balance_or_statement/gulf_arabic/abroad: 1
+    balance_or_statement/arabizi/status: 3
+    balance_or_statement/arabizi/how_to: 3
+    balance_or_statement/arabizi/conditions: 3
+    balance_or_statement/arabizi/cost: 3
+    balance_or_statement/arabizi/abroad: 3
+    balance_or_statement/mixed/status: 3
+    balance_or_statement/mixed/how_to: 3
+    balance_or_statement/mixed/conditions: 3
+    balance_or_statement/mixed/cost: 3
+    balance_or_statement/mixed/abroad: 3
+    transfer_issue/gulf_arabic/status: 1
+    transfer_issue/gulf_arabic/how_to: 1
+    transfer_issue/gulf_arabic/conditions: 1
+    transfer_issue/gulf_arabic/cost: 1
+    transfer_issue/gulf_arabic/abroad: 1
+    transfer_issue/arabizi/status: 3
+    transfer_issue/arabizi/how_to: 3
+    transfer_issue/arabizi/conditions: 3
+    transfer_issue/arabizi/cost: 3
+    transfer_issue/arabizi/abroad: 3
+    transfer_issue/mixed/status: 3
+    transfer_issue/mixed/how_to: 3
+    transfer_issue/mixed/conditions: 3
+    transfer_issue/mixed/cost: 3
+    transfer_issue/mixed/abroad: 3
+    unrecognized_transaction/gulf_arabic/status: 1
+    unrecognized_transaction/gulf_arabic/how_to: 1
+    unrecognized_transaction/gulf_arabic/conditions: 1
+    unrecognized_transaction/gulf_arabic/cost: 1
+    unrecognized_transaction/gulf_arabic/abroad: 1
+    unrecognized_transaction/arabizi/status: 3
+    unrecognized_transaction/arabizi/how_to: 3
+    unrecognized_transaction/arabizi/conditions: 3
+    unrecognized_transaction/arabizi/cost: 3
+    unrecognized_transaction/arabizi/abroad: 3
+    unrecognized_transaction/mixed/status: 3
+    unrecognized_transaction/mixed/how_to: 3
+    unrecognized_transaction/mixed/conditions: 3
+    unrecognized_transaction/mixed/cost: 3
+    unrecognized_transaction/mixed/abroad: 3
+    fees_and_charges/gulf_arabic/status: 1
+    fees_and_charges/gulf_arabic/how_to: 1
+    fees_and_charges/gulf_arabic/conditions: 1
+    fees_and_charges/gulf_arabic/cost: 1
+    fees_and_charges/gulf_arabic/abroad: 1
+    fees_and_charges/arabizi/status: 3
+    fees_and_charges/arabizi/how_to: 3
+    fees_and_charges/arabizi/conditions: 3
+    fees_and_charges/arabizi/cost: 3
+    fees_and_charges/arabizi/abroad: 3
+    fees_and_charges/mixed/status: 3
+    fees_and_charges/mixed/how_to: 3
+    fees_and_charges/mixed/conditions: 3
+    fees_and_charges/mixed/cost: 3
+    fees_and_charges/mixed/abroad: 3
+    loans_and_credit/gulf_arabic/status: 1
+    loans_and_credit/gulf_arabic/how_to: 1
+    loans_and_credit/gulf_arabic/conditions: 1
+    loans_and_credit/gulf_arabic/cost: 1
+    loans_and_credit/gulf_arabic/abroad: 1
+    loans_and_credit/arabizi/status: 3
+    loans_and_credit/arabizi/how_to: 3
+    loans_and_credit/arabizi/conditions: 3
+    loans_and_credit/arabizi/cost: 3
+    loans_and_credit/arabizi/abroad: 3
+    loans_and_credit/mixed/status: 3
+    loans_and_credit/mixed/how_to: 3
+    loans_and_credit/mixed/conditions: 3
+    loans_and_credit/mixed/cost: 3
+    loans_and_credit/mixed/abroad: 3
+    bill_inquiry/gulf_arabic/status: 1
+    bill_inquiry/gulf_arabic/how_to: 1
+    bill_inquiry/gulf_arabic/conditions: 1
+    bill_inquiry/gulf_arabic/cost: 1
+    bill_inquiry/gulf_arabic/abroad: 1
+    bill_inquiry/arabizi/status: 3
+    bill_inquiry/arabizi/how_to: 3
+    bill_inquiry/arabizi/conditions: 3
+    bill_inquiry/arabizi/cost: 3
+    bill_inquiry/arabizi/abroad: 3
+    bill_inquiry/mixed/status: 3
+    bill_inquiry/mixed/how_to: 3
+    bill_inquiry/mixed/conditions: 3
+    bill_inquiry/mixed/cost: 3
+    bill_inquiry/mixed/abroad: 3
+    network_or_internet_issue/gulf_arabic/status: 1
+    network_or_internet_issue/gulf_arabic/how_to: 1
+    network_or_internet_issue/gulf_arabic/conditions: 1
+    network_or_internet_issue/gulf_arabic/cost: 1
+    network_or_internet_issue/gulf_arabic/abroad: 1
+    network_or_internet_issue/arabizi/status: 3
+    network_or_internet_issue/arabizi/how_to: 3
+    network_or_internet_issue/arabizi/conditions: 3
+    network_or_internet_issue/arabizi/cost: 3
+    network_or_internet_issue/arabizi/abroad: 3
+    network_or_internet_issue/mixed/status: 3
+    network_or_internet_issue/mixed/how_to: 3
+    network_or_internet_issue/mixed/conditions: 3
+    network_or_internet_issue/mixed/cost: 3
+    network_or_internet_issue/mixed/abroad: 3
+    plan_change/gulf_arabic/status: 1
+    plan_change/gulf_arabic/how_to: 1
+    plan_change/gulf_arabic/conditions: 1
+    plan_change/gulf_arabic/cost: 1
+    plan_change/gulf_arabic/abroad: 1
+    plan_change/arabizi/status: 3
+    plan_change/arabizi/how_to: 3
+    plan_change/arabizi/conditions: 3
+    plan_change/arabizi/cost: 3
+    plan_change/arabizi/abroad: 3
+    plan_change/mixed/status: 3
+    plan_change/mixed/how_to: 3
+    plan_change/mixed/conditions: 3
+    plan_change/mixed/cost: 3
+    plan_change/mixed/abroad: 3
+    sim_or_number/gulf_arabic/status: 1
+    sim_or_number/gulf_arabic/how_to: 1
+    sim_or_number/gulf_arabic/conditions: 1
+    sim_or_number/gulf_arabic/cost: 1
+    sim_or_number/gulf_arabic/abroad: 1
+    sim_or_number/arabizi/status: 3
+    sim_or_number/arabizi/how_to: 3
+    sim_or_number/arabizi/conditions: 3
+    sim_or_number/arabizi/cost: 3
+    sim_or_number/arabizi/abroad: 3
+    sim_or_number/mixed/status: 3
+    sim_or_number/mixed/how_to: 3
+    sim_or_number/mixed/conditions: 3
+    sim_or_number/mixed/cost: 3
+    sim_or_number/mixed/abroad: 3
+    roaming/gulf_arabic/status: 1
+    roaming/gulf_arabic/how_to: 1
+    roaming/gulf_arabic/conditions: 1
+    roaming/gulf_arabic/cost: 1
+    roaming/gulf_arabic/abroad: 1
+    roaming/arabizi/status: 3
+    roaming/arabizi/how_to: 3
+    roaming/arabizi/conditions: 3
+    roaming/arabizi/cost: 3
+    roaming/arabizi/abroad: 3
+    roaming/mixed/status: 3
+    roaming/mixed/how_to: 3
+    roaming/mixed/conditions: 3
+    roaming/mixed/cost: 3
+    roaming/mixed/abroad: 3
+    order_status/gulf_arabic/status: 1
+    order_status/gulf_arabic/how_to: 1
+    order_status/gulf_arabic/conditions: 1
+    order_status/gulf_arabic/cost: 1
+    order_status/gulf_arabic/abroad: 1
+    order_status/arabizi/status: 3
+    order_status/arabizi/how_to: 3
+    order_status/arabizi/conditions: 3
+    order_status/arabizi/cost: 3
+    order_status/arabizi/abroad: 3
+    order_status/mixed/status: 3
+    order_status/mixed/how_to: 3
+    order_status/mixed/conditions: 3
+    order_status/mixed/cost: 3
+    order_status/mixed/abroad: 3
+    missing_or_wrong_item/gulf_arabic/status: 1
+    missing_or_wrong_item/gulf_arabic/how_to: 1
+    missing_or_wrong_item/gulf_arabic/conditions: 1
+    missing_or_wrong_item/gulf_arabic/cost: 1
+    missing_or_wrong_item/gulf_arabic/abroad: 1
+    missing_or_wrong_item/arabizi/status: 3
+    missing_or_wrong_item/arabizi/how_to: 3
+    missing_or_wrong_item/arabizi/conditions: 3
+    missing_or_wrong_item/arabizi/cost: 3
+    missing_or_wrong_item/arabizi/abroad: 3
+    missing_or_wrong_item/mixed/status: 3
+    missing_or_wrong_item/mixed/how_to: 3
+    missing_or_wrong_item/mixed/conditions: 3
+    missing_or_wrong_item/mixed/cost: 3
+    missing_or_wrong_item/mixed/abroad: 3
+    cancel_order/gulf_arabic/status: 1
+    cancel_order/gulf_arabic/how_to: 1
+    cancel_order/gulf_arabic/conditions: 1
+    cancel_order/gulf_arabic/cost: 1
+    cancel_order/gulf_arabic/abroad: 1
+    cancel_order/arabizi/status: 3
+    cancel_order/arabizi/how_to: 3
+    cancel_order/arabizi/conditions: 3
+    cancel_order/arabizi/cost: 3
+    cancel_order/arabizi/abroad: 3
+    cancel_order/mixed/status: 3
+    cancel_order/mixed/how_to: 3
+    cancel_order/mixed/conditions: 3
+    cancel_order/mixed/cost: 3
+    cancel_order/mixed/abroad: 3
+    refund_request/gulf_arabic/status: 1
+    refund_request/gulf_arabic/how_to: 1
+    refund_request/gulf_arabic/conditions: 1
+    refund_request/gulf_arabic/cost: 1
+    refund_request/gulf_arabic/abroad: 1
+    refund_request/arabizi/status: 3
+    refund_request/arabizi/how_to: 3
+    refund_request/arabizi/conditions: 3
+    refund_request/arabizi/cost: 3
+    refund_request/arabizi/abroad: 3
+    refund_request/mixed/status: 3
+    refund_request/mixed/how_to: 3
+    refund_request/mixed/conditions: 3
+    refund_request/mixed/cost: 3
+    refund_request/mixed/abroad: 3
+    change_delivery_details/gulf_arabic/status: 1
+    change_delivery_details/gulf_arabic/how_to: 1
+    change_delivery_details/gulf_arabic/conditions: 1
+    change_delivery_details/gulf_arabic/cost: 1
+    change_delivery_details/gulf_arabic/abroad: 1
+    change_delivery_details/arabizi/status: 3
+    change_delivery_details/arabizi/how_to: 3
+    change_delivery_details/arabizi/conditions: 3
+    change_delivery_details/arabizi/cost: 3
+    change_delivery_details/arabizi/abroad: 3
+    change_delivery_details/mixed/status: 3
+    change_delivery_details/mixed/how_to: 3
+    change_delivery_details/mixed/conditions: 3
+    change_delivery_details/mixed/cost: 3
+    change_delivery_details/mixed/abroad: 3
+    failed_delivery/gulf_arabic/status: 1
+    failed_delivery/gulf_arabic/how_to: 1
+    failed_delivery/gulf_arabic/conditions: 1
+    failed_delivery/gulf_arabic/cost: 1
+    failed_delivery/gulf_arabic/abroad: 1
+    failed_delivery/arabizi/status: 3
+    failed_delivery/arabizi/how_to: 3
+    failed_delivery/arabizi/conditions: 3
+    failed_delivery/arabizi/cost: 3
+    failed_delivery/arabizi/abroad: 3
+    failed_delivery/mixed/status: 3
+    failed_delivery/mixed/how_to: 3
+    failed_delivery/mixed/conditions: 3
+    failed_delivery/mixed/cost: 3
+    failed_delivery/mixed/abroad: 3
+    account_access/gulf_arabic/status: 1
+    account_access/gulf_arabic/how_to: 1
+    account_access/gulf_arabic/conditions: 1
+    account_access/gulf_arabic/cost: 1
+    account_access/gulf_arabic/abroad: 1
+    account_access/arabizi/status: 3
+    account_access/arabizi/how_to: 3
+    account_access/arabizi/conditions: 3
+    account_access/arabizi/cost: 3
+    account_access/arabizi/abroad: 3
+    account_access/mixed/status: 3
+    account_access/mixed/how_to: 3
+    account_access/mixed/conditions: 3
+    account_access/mixed/cost: 3
+    account_access/mixed/abroad: 3
+    handoff_to_human/gulf_arabic/status: 1
+    handoff_to_human/gulf_arabic/how_to: 1
+    handoff_to_human/gulf_arabic/conditions: 1
+    handoff_to_human/gulf_arabic/abroad: 1
+    handoff_to_human/arabizi/status: 3
+    handoff_to_human/arabizi/how_to: 3
+    handoff_to_human/arabizi/conditions: 3
+    handoff_to_human/arabizi/abroad: 3
+    handoff_to_human/mixed/status: 3
+    handoff_to_human/mixed/how_to: 3
+    handoff_to_human/mixed/conditions: 3
+    handoff_to_human/mixed/abroad: 3
+    other/gulf_arabic/status: 1
+    other/gulf_arabic/how_to: 1
+    other/gulf_arabic/conditions: 1
+    other/gulf_arabic/cost: 1
+    other/gulf_arabic/abroad: 1
+    other/arabizi/status: 3
+    other/arabizi/how_to: 3
+    other/arabizi/conditions: 3
+    other/arabizi/cost: 3
+    other/arabizi/abroad: 3
+    other/mixed/status: 3
+    other/mixed/how_to: 3
+    other/mixed/conditions: 3
+    other/mixed/cost: 3
+    other/mixed/abroad: 3
+  prompt: >-
+    Write {n} different examples. Each has a customer message with the intent "{intent}"
+    ({domain}: {description}) and the assistant's reply.{message_rule}
+    Customer: {persona}, tone: {tone}. {style}
+    Vary the wording, the details and the length (3 to 30 words per message). Do not use real
+    company or brand names.
+    Reply rules: {reply_style} One or two short, polite sentences. Refer only to what the
+    customer wrote: never assume a reason, a product problem, an amount, a date or an outcome
+    they did not mention. Never invent facts (balances, amounts, dates, names, policies). Never
+    ask for card numbers, PINs, passwords, OTPs or CVV. The assistant cannot see the account or
+    do anything itself, so never say something has been done (blocked, frozen, refunded, sent,
+    changed, logged, noted, escalated); for a question about how to do something or what is
+    possible, point to the app, the website or the team without inventing steps or rules;
+    otherwise say what the customer can do next or that the request will be passed to the
+    team.{intent_rule}
+    Before you write, remember the language rule for every message: {style}
+    Output exactly {n} lines, each one JSON object: {{"message": "...", "reply": "..."}}.
+
+verify:
+  inputs: ["${sft.out_dir}/generated.jsonl"]

@@ -1,0 +1,51 @@
+# Phase 6 evaluation on the human test set (D-032). The test set is scored once with these
+# settings; nothing is tuned on it.
+#   uv run python scripts/evaluate_test.py    --config configs/eval/phase6.yaml   # GPU/CPU: DanaLM, CAMeLBERT, latency, memory
+#   uv run python scripts/evaluate_teacher.py --config configs/eval/phase6.yaml   # Qwen: zero-shot intents, reply judge
+#   uv run python scripts/phase6_report.py    --config configs/eval/phase6.yaml
+# sft_data (tokenizer, normalization, reply languages) and eval (decoding) come from Phase 5;
+# the teacher is the 35B Qwen of the SFT data.
+base: [../sft/train.yaml, ../teacher/qwen35_35b_a3b.yaml]
+run_name: phase6-eval
+
+phase6:
+  test_set: ${paths.data_dir}/test/test_set.jsonl
+  test_sha256: e6961fd244c57f2db1460052586b1dfd8183cc3269bad774577ef87660248397   # D-032; a changed file is refused
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected.json   # the Phase 5 model and its SFT-validation threshold
+  camelbert_dir: ${paths.artifacts_dir}/checkpoints/baseline-camelbert/best
+  camelbert_max_length: 64
+  out_dir: ${paths.artifacts_dir}/eval/phase6
+  review_sheet: ${paths.data_dir}/test/candidates-en/review-human.csv
+  disputed_rows: [28, 57, 58]  # review-sheet rows an audit disagreed with: sensitivity line only (D-032)
+  bootstrap: {n_resamples: 10000, seed: 42}
+  latency: {warmup: 3, cpu_threads: 4}
+  bars: {valid_json: 0.99, macro_f1_gap: 0.03, coverage: 0.70, coverage_accuracy: 0.95, reply_lang: 0.95}   # D-030
+  teacher_batch: 20            # messages per zero-shot request (the Phase 2 judge prompt)
+  judge_batch: 10              # replies per reply-quality request
+  teacher_params:
+    temperature: 0.0
+    max_tokens: 1500
+    chat_template_kwargs: {enable_thinking: false}
+  intent_system: >-          # as the Phase 2 judge (configs/sft/generate.yaml verify.system)
+    You label customer-service messages with exactly one intent. Answer with one line per
+    message, in the form "number: label", and nothing else.
+  judge_system: >-
+    You are a strict reviewer of customer-service chatbot replies. Follow the requested format
+    exactly and output nothing else.
+  judge_prompt: >-
+    Below are {n} numbered customer messages to a UAE customer-service chatbot, each with the
+    chatbot's reply. The chatbot cannot see accounts or do anything itself, so it must never claim
+    that something was done, and it must not invent facts such as amounts, dates, names or
+    policies. For each reply, answer four yes/no questions:
+    answers: does the reply respond to what the customer asked or needs?
+    polite_clear: is it polite, clear and well written?
+    language: is it in the customer's language (an English message needs an English reply)?
+    safe: does it avoid invented facts and claims that an action was done?
+
+
+    {items}
+
+
+    Output exactly {n} lines, each one JSON object:
+    {{"n": <number>, "answers": true or false, "polite_clear": true or false, "language": true or false, "safe": true or false, "note": "<short reason if any answer is false, else empty>"}}.
+  results_md: docs/results/phase6_eval.md

@@ -19,18 +19,9 @@ from danalm.config import config_from_cli
 from danalm.data.intents import load_intents
 from danalm.teacher.checkpoint import AnswerLog
 from danalm.teacher.client import TEACHER_ERRORS, chat_with_retries, parse_labels
+from danalm.teacher.prompts import intent_judge_prompt as build_prompt
 from danalm.teacher.server import TeacherServer
 from danalm.utils.run import start_run
-
-
-def build_prompt(intents: list[dict], messages: list[str]) -> str:
-    labels = "\n".join(f"- {i['name']}: {i['description']}" for i in intents)
-    numbered = "\n".join(f"{n}. {m}" for n, m in enumerate(messages, start=1))
-    return (
-        f"Intents:\n{labels}\n\nMessages:\n{numbered}\n\n"
-        "For each message, answer with its number and the single best intent name, "
-        'like "3: order_status".'
-    )
 
 
 def main() -> None:

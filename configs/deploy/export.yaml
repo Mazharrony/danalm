@@ -1,0 +1,24 @@
+# Phase 7 (D-034): the D-033 model as ONNX step graphs, float32 and quantized.
+#   uv run python scripts/export_onnx.py   --config configs/deploy/export.yaml   # float32 + parity check
+#   uv run python scripts/quantize_onnx.py --config configs/deploy/export.yaml   # the quantized variants
+# A variant directory (artifacts/deploy/<name>) holds model.onnx, tokenizer.json and danalm.json:
+# everything danalm.infer.predictor needs. The threshold in danalm.json is fixed on the real dev
+# set by scripts/evaluate_variants.py.
+base: ../sft/train.yaml        # sft_data (tokenizer, special tokens, intents, normalization) and eval (answer length)
+run_name: phase7-export
+
+deploy:
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5b.json   # the D-033 model
+  out_dir: ${paths.artifacts_dir}/deploy
+  opset: 18
+  parity:                      # right after the export: PyTorch step vs ONNX Runtime, float32
+    messages: ${paths.data_dir}/sft/sft-real/dev.jsonl
+    n: 32
+    threads: 4
+  variants:                    # D-034; every MatMul weight including the output projection
+    int8: {method: dynamic_int8, keep_output_float: false}
+    int4: {method: matmul_nbits, bits: 4, block_size: 32, symmetric: true, accuracy_level: 4, keep_output_float: false}
+    # the one fallback per variant (D-034), built only if the variant fails the rule
+    int8-outfp32: {method: dynamic_int8, keep_output_float: true}
+    int4-outfp32: {method: matmul_nbits, bits: 4, block_size: 32, symmetric: true, accuracy_level: 4, keep_output_float: true}
+  build: [int8, int4]          # which variants scripts/quantize_onnx.py builds

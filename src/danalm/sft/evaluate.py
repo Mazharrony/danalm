@@ -1,6 +1,6 @@
 """Evaluating the fine-tuned model (Phase 5 development metrics, D-029; Phase 6 reuses them).
 
-- parse_answer: is the generated text valid JSON with exactly "intent" and "reply" as strings
+- parse_answer (defined in danalm.sft.format): is the generated text valid JSON with exactly "intent" and "reply" as strings
   and a known intent?
 - greedy_answers: greedy decoding, batched over prompts of equal length, so no padding and the
   same result as one prompt at a time. No KV cache.
@@ -9,7 +9,6 @@
 - intent_metrics and coverage_at: accuracy, macro-F1, and the coverage at a target accuracy.
 """
 
-import json
 from collections import defaultdict
 from collections.abc import Callable
 from contextlib import AbstractContextManager
@@ -20,25 +19,11 @@ import torch.nn.functional as F
 from tokenizers import Tokenizer
 from torch import nn
 
-from danalm.data.pipeline import detect_lang
 from danalm.sft.data import IGNORE, ChatTokens, collate, label_continuations, prompt_ids
+from danalm.sft.format import parse_answer
+from danalm.text import detect_lang
 
 Autocast = Callable[[], AbstractContextManager]
-
-
-def parse_answer(text: str, intents: set[str]) -> dict[str, Any]:
-    """parsed: the text is JSON. valid: a JSON object with exactly "intent" and "reply", both
-    strings, and an intent from the taxonomy (D-029)."""
-    try:
-        obj = json.loads(text)
-    except ValueError:
-        return {"parsed": False, "valid": False, "intent": None, "reply": None}
-    if not isinstance(obj, dict):
-        return {"parsed": True, "valid": False, "intent": None, "reply": None}
-    intent = obj.get("intent") if isinstance(obj.get("intent"), str) else None
-    reply = obj.get("reply") if isinstance(obj.get("reply"), str) else None
-    valid = set(obj) == {"intent", "reply"} and intent in intents and reply is not None
-    return {"parsed": True, "valid": valid, "intent": intent, "reply": reply}
 
 
 @torch.no_grad()

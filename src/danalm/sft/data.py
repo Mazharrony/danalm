@@ -6,40 +6,21 @@ covers only the answer: the JSON and the end token.
 """
 
 import random
-from dataclasses import dataclass
 from typing import Any
 
 import torch
 from tokenizers import Tokenizer
 
-from danalm.data.pipeline import normalize
+# the torch-free part of the format lives in danalm.sft.format; re-exported for the SFT scripts
+from danalm.sft.format import (  # noqa: F401
+    INTENT_PREFIX,
+    ChatTokens,
+    label_continuations,
+    parse_answer,
+    prompt_ids,
+)
 
 IGNORE = -100  # the model's ignore_index for targets without a loss
-INTENT_PREFIX = '{"intent": "'
-
-
-@dataclass(frozen=True)
-class ChatTokens:
-    """Ids of the special tokens of the chat format."""
-
-    user: int
-    assistant: int
-    eos: int
-    pad: int
-
-    @classmethod
-    def from_tokenizer(cls, tok: Tokenizer, special: dict[str, str]) -> "ChatTokens":
-        ids = {role: tok.token_to_id(text) for role, text in special.items()}
-        missing = [special[role] for role, i in ids.items() if i is None]
-        if missing:
-            raise ValueError(f"the tokenizer has no special tokens {missing}")
-        return cls(**ids)
-
-
-def prompt_ids(tok: Tokenizer, chat: ChatTokens, message: str, norm: dict[str, Any]) -> list[int]:
-    """<|user|> message <|assistant|>: what the model sees before it answers."""
-    text = normalize(message, **norm)
-    return [chat.user, *tok.encode(text, add_special_tokens=False).ids, chat.assistant]
 
 
 def example_ids(
@@ -83,17 +64,3 @@ def length_batches(
         batches += [part[b : b + batch_size] for b in range(0, len(part), batch_size)]
     rng.shuffle(batches)
     return batches
-
-
-def label_continuations(tok: Tokenizer, names: list[str]) -> tuple[list[int], list[list[int]]]:
-    """(prefix ids, one continuation per intent) for scoring an intent as the value of "intent".
-    The continuation runs to the closing quote and comma, tokenized together with the prefix, as
-    in the training targets ('{"intent": "<name>", "reply": ...')."""
-    prefix = tok.encode(INTENT_PREFIX, add_special_tokens=False).ids
-    conts = []
-    for name in names:
-        full = tok.encode(f'{INTENT_PREFIX}{name}",', add_special_tokens=False).ids
-        if full[: len(prefix)] != prefix:
-            raise ValueError(f"the intent prefix tokenizes differently before {name!r}")
-        conts.append(full[len(prefix) :])
-    return prefix, conts

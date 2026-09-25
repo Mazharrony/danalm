@@ -76,16 +76,45 @@ class Attention(nn.Module):
         self.kv = nn.Linear(cfg.d_model, 2 * cfg.n_kv_heads * cfg.head_dim, bias=False)
         self.out = nn.Linear(cfg.n_heads * cfg.head_dim, cfg.d_model, bias=False)
 
-    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+    def _qkv(
+        self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Queries (batch, heads, seq, head_dim) and keys and values (batch, kv_heads, seq,
+        head_dim), with RoPE applied to queries and keys."""
         b, t, _ = x.shape
         q = self.q(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k, v = self.kv(x).view(b, t, 2, self.n_kv_heads, self.head_dim).permute(2, 0, 3, 1, 4)
-        q, k = apply_rope(q, cos, sin), apply_rope(k, cos, sin)
+        return apply_rope(q, cos, sin), apply_rope(k, cos, sin), v
+
+    def _attend(
+        self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, mask: torch.Tensor | None
+    ) -> torch.Tensor:
+        """Attention output projected back to d_model; causal when mask is None."""
         if self.n_kv_heads != self.n_heads:  # share each key/value head among a group of queries
             group = self.n_heads // self.n_kv_heads
             k, v = k.repeat_interleave(group, dim=1), v.repeat_interleave(group, dim=1)
-        y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, is_causal=mask is None)
+        b, _, t, _ = q.shape
         return self.out(y.transpose(1, 2).reshape(b, t, -1))
+
+    def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
+        q, k, v = self._qkv(x, cos, sin)
+        return self._attend(q, k, v, None)
+
+    def step(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        mask: torch.Tensor,
+        past_k: torch.Tensor,
+        past_v: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Attention for new tokens after cached keys and values; returns the output and the
+        keys and values including the new tokens. cos and sin are taken at the new positions."""
+        q, k, v = self._qkv(x, cos, sin)
+        k, v = torch.cat((past_k, k), dim=2), torch.cat((past_v, v), dim=2)
+        return self._attend(q, k, v, mask), k, v
 
 
 class SwiGLU(nn.Module):
@@ -110,6 +139,19 @@ class Block(nn.Module):
     def forward(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:
         x = x + self.attn(self.attn_norm(x), cos, sin)
         return x + self.ffn(self.ffn_norm(x))
+
+    def step(
+        self,
+        x: torch.Tensor,
+        cos: torch.Tensor,
+        sin: torch.Tensor,
+        mask: torch.Tensor,
+        past_k: torch.Tensor,
+        past_v: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        y, k, v = self.attn.step(self.attn_norm(x), cos, sin, mask, past_k, past_v)
+        x = x + y
+        return x + self.ffn(self.ffn_norm(x)), k, v
 
 
 class DanaLM(nn.Module):
@@ -153,6 +195,37 @@ class DanaLM(nn.Module):
                 ignore_index=-100,
             )
         return logits, loss
+
+    def step_hidden(
+        self, idx: torch.Tensor, positions: torch.Tensor, past: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """The KV-cache forward (Phase 7, D-034) up to the final norm. idx (batch, new) are new
+        tokens at the absolute positions (new,), shared by the batch; past holds two tensors per
+        layer, keys then values, each (batch, kv_heads, past_len, head_dim), and past_len may be
+        0. Returns the final hidden states and the keys and values including the new tokens."""
+        x = self.embed(idx)
+        cos, sin = self.rope_cos[positions], self.rope_sin[positions]
+        # a query sees every key up to its own position: explicit, because is_causal would align
+        # the mask to the top left and hide the cache from a single new token
+        keys = torch.arange(past[0].shape[2] + idx.shape[1], device=idx.device)
+        mask = keys[None, :] <= positions[:, None]
+        presents = []
+        for i, block in enumerate(self.blocks):
+            x, k, v = block.step(x, cos, sin, mask, past[2 * i], past[2 * i + 1])
+            presents += [k, v]
+        return self.norm(x), presents
+
+    def step(
+        self, idx: torch.Tensor, positions: torch.Tensor, past: list[torch.Tensor]
+    ) -> tuple[torch.Tensor, list[torch.Tensor]]:
+        """Logits (batch, new, vocab) of the new tokens, and the updated cache (see step_hidden)."""
+        hidden, presents = self.step_hidden(idx, positions, past)
+        return F.linear(hidden, self.embed.weight), presents
+
+    def empty_cache(self, batch: int) -> list[torch.Tensor]:
+        """A cache with no positions yet, for the first step."""
+        shape = (batch, self.cfg.n_kv_heads, 0, self.cfg.head_dim)
+        return [self.embed.weight.new_zeros(shape) for _ in range(2 * self.cfg.n_layers)]
 
     @torch.no_grad()
     def generate(

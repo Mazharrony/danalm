@@ -129,3 +129,42 @@ def test_flops_per_token_counts_weights_and_attention():
         + TINY.d_model * TINY.vocab_size
     )
     assert flops_per_token(TINY, seq_len=32) == 6 * weights + 6 * TINY.n_layers * TINY.d_model * 32
+
+
+# ---------------------------------------------------------------- KV cache (Phase 7, D-034)
+def test_step_prefill_with_an_empty_cache_equals_the_full_forward(model):
+    idx = torch.randint(0, TINY.vocab_size, (3, 12))
+    full, _ = model(idx)
+    logits, cache = model.step(idx, torch.arange(12), model.empty_cache(3))
+    assert torch.allclose(logits, full, atol=1e-5)
+    assert len(cache) == 2 * TINY.n_layers
+    assert cache[0].shape == (3, TINY.n_kv_heads, 12, TINY.head_dim)
+
+
+def test_step_one_token_at_a_time_and_in_chunks_equals_the_full_forward(model):
+    idx = torch.randint(0, TINY.vocab_size, (2, 14))
+    full, _ = model(idx)
+    # the first 5 tokens, then one token at a time: a single query must see the whole cache
+    logits, cache = model.step(idx[:, :5], torch.arange(5), model.empty_cache(2))
+    got = [logits]
+    for t in range(5, 14):
+        logits, cache = model.step(idx[:, t : t + 1], torch.tensor([t]), cache)
+        got.append(logits)
+    assert torch.allclose(torch.cat(got, dim=1), full, atol=1e-5)
+    # a chunk of several new tokens after a non-empty cache
+    _, cache = model.step(idx[:, :6], torch.arange(6), model.empty_cache(2))
+    logits, _ = model.step(idx[:, 6:], torch.arange(6, 14), cache)
+    assert torch.allclose(logits, full[:, 6:], atol=1e-5)
+
+
+def test_cached_greedy_decoding_matches_generate(model):
+    prompt = torch.randint(0, TINY.vocab_size, (1, 6))
+    ref = model.generate(prompt, max_new_tokens=10, eos_id=-1, temperature=0)[0, 6:].tolist()
+    with torch.no_grad():
+        logits, cache = model.step(prompt, torch.arange(6), model.empty_cache(1))
+        out = []
+        for t in range(6, 16):
+            nxt = int(logits[0, -1].argmax())
+            out.append(nxt)
+            logits, cache = model.step(torch.tensor([[nxt]]), torch.tensor([t]), cache)
+    assert out == ref

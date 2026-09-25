@@ -113,6 +113,20 @@ def main() -> None:
     sample = read_json(r["reply_check_sample"]) or {}
     full = read_json(r["reply_check_all"]) or {}
     m = best
+
+    def caught(summary: dict[str, Any]) -> str:
+        canaries = summary.get("canaries", [])
+        return f"{sum(c['verdict'] == 'BROKEN' for c in canaries)} of {len(canaries)}"
+
+    thr = m["coverage"]["threshold"]
+    if len(winners) > 1:  # why this round won (D-029 rule applied to the round winners)
+        ws = sorted(winners.values(), key=lambda w: w["round"])
+        why = ("- The round winners: " + "; ".join(
+            f"{w['round']} {pct(w['intent_accuracy'])} intent accuracy, {pct(w['valid_json'])} valid JSON, "
+            f"val loss {w['val_loss']:.3f}" for w in ws) + f". Within {100 * r['tie']:.1f} points they "
+            "count as tied, so valid JSON and then validation loss decide.")  # fmt: skip
+    else:
+        why = ""
     lines = [
         "# Phase 5 results: supervised fine-tuning",
         "",
@@ -126,7 +140,8 @@ def main() -> None:
         f"- Reply check (Qwen as proofreader): the 500-reply sample estimated "
         f"{pct(sample.get('estimated_broken_share_of_train'))} broken replies, above the 3% bar, so every reply "
         f"was judged: {full.get('train_broken', '–')} of the training and {full.get('val_broken', '–')} of the "
-        "validation replies were marked broken. The judge missed both canary replies, so some broken "
+        f"validation replies were marked broken. Of the known-broken canary replies, the judge caught "
+        f"{caught(sample)} in the sample check and {caught(full)} in the full check, so some broken "
         "replies remain.",
         f"- Broken replies rewritten and accepted: {data.get('train/reply_rewritten', 0) + data.get('val/reply_rewritten', 0):,}; "
         f"dropped: {data.get('train/dropped_broken_reply', 0) + data.get('val/dropped_broken_reply', 0):,}.",
@@ -150,6 +165,7 @@ def main() -> None:
         "",
         *(f"- {rnd} winner (D-029 rule): lr {w['lr']}, epoch {w['epoch']}, intent accuracy "
           f"{pct(w['intent_accuracy'])}, valid JSON {pct(w['valid_json'])}." for rnd, w in winners.items()),
+        *([why] if why else []),
         f"- **Chosen:** {best['round']}, lr {best['lr']}, epoch {best['epoch']} (`{chosen_path.as_posix()}`).",
         "",
         "## The chosen model on the validation split",
@@ -160,7 +176,7 @@ def main() -> None:
         f"likelihood {pct(m['lik_intent_accuracy'])}.",
         "",
         f"Coverage (D-030, on this development split): at confidence ≥ "
-        f"{m['coverage']['threshold'] if m['coverage']['threshold'] is not None else '–'}, the model answers "
+        f"{'–' if thr is None else f'{thr:.3f}'}, the model answers "
         f"{pct(m['coverage']['coverage'])} of the messages with {pct(m['coverage']['accuracy'])} intent accuracy. "
         "Phase 6 fixes this threshold here and applies it to the test set.",
         "",

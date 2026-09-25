@@ -755,6 +755,25 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   probabilities) is not possible: Qwen's 248k-token vocabulary differs from DanaLM's 16k. So
   there is no separate distillation step.
 
+- **Result (2026-09-25; [results/phase5_sft.md](results/phase5_sft.md)):**
+  - 30 checkpoints were trained: 2 rounds × 3 learning rates × 5 epochs.
+  - The rule chose **round 1, peak LR 3e-4, epoch 3**. On the SFT validation split (957
+    examples) it gets:
+    - valid JSON **100.0%**;
+    - intent accuracy **92.9%**, macro-F1 92.5%, and 92.8% by likelihood;
+    - replies in an allowed language 100.0%;
+    - at 95% accuracy it covers 96.6% of the messages (confidence threshold 0.612).
+  - By variety: English 94.2%, Arabizi 92.5%, Gulf Arabic 92.0%, mixed 91.9%.
+  - The most frequent confusion is order_status → failed_delivery (6 times), and the reverse
+    3 times.
+  - In most runs the validation loss is lowest at epoch 3 and rises after it, while accuracy
+    stays level. That is overfitting, and the rule avoids it.
+  - The CAMeLBERT-mix baseline scores 93.3% accuracy and 92.9% macro-F1 on the same split, 0.4
+    points above this checkpoint.
+  - **Caveat:** the same teacher wrote the validation split, and it keeps only examples the
+    judge agreed with, so it is easier than real messages. Phase 6 measures on the human test
+    set.
+
 ## D-030 · Phase 6 · What counts as good, fixed before any SFT result
 
 - **Decision:** the owner accepted these on 2026-09-24, before training. On the human test set,
@@ -827,6 +846,35 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     the server grew to 34 GB committed, and a longer unattended job could have reached the
     watchdog's limit. The speed effect is compared with the full run's rate in the report.
   - **Not tonight:** no test-set evaluation, no push, and no change to the intent taxonomy.
+- **Results (2026-09-24 20:00 to 2026-09-25 04:57):** every step succeeded at its first
+  attempt, and the watchdog never killed anything.
+  - **A.** Broken replies:
+    - The full check marked 721 of 17,579 training replies and 42 of 968 validation replies as
+      broken: Gulf Arabic 7.1%, Arabizi 5.4%, mixed 3.9%, English 0.2%, Saudi 11.2%.
+    - The judge caught 0 of 2 canaries in the sample and 1 of 2 in the full check.
+    - Of the rewrites, 724 passed the filters and 679 passed the second judgement, so 84
+      examples were dropped.
+  - **B.** Top-up:
+    - 1,501 requests produced 11,984 examples. The filters kept 3,692.
+    - 3,066 were added. The rest were dropped: the judge disagreed on 512, 110 had broken
+      replies, 4 were duplicates, and none copied a validation or test message.
+    - Mixed kept only 24%: Qwen wrote pure Arabic 4,870 times and pure English 1,047 times.
+    - The smallest cell grew from 46 to 93 examples (failed_delivery × Arabizi).
+    - With the 2 GiB cache, Qwen ran at 93.9 tokens/s, against 92 in the full run.
+  - **Data v3:** 20,572 training and 957 validation examples. The overlap check found 0 overlaps
+    between the 64 test messages and any training text.
+  - **D.** The second pretraining pass brought validation loss from 3.330 to **3.232**
+    (perplexity 27.9 to 25.3), so it was kept. Its results page is
+    [results/phase4_second_pass.md](results/phase4_second_pass.md).
+  - **C and E.** Round 2's winner (LR 3e-4, epoch 3: 92.6%, valid JSON 100%, validation loss
+    0.798) is tied with round 1's (92.9%, 100%, 0.796). The rule decides on loss, so **round 1
+    is the Phase 5 model**.
+    - The highest single accuracy was 93.5% (round 2, LR 1e-3, epoch 4). It lost the tie-break,
+      with 99.9% valid JSON and a validation loss of 0.881.
+    - So the second pass lowered the base model's loss, but it brought no measurable gain on
+      this development split.
+  - **G.** CAMeLBERT-mix scored 93.3% accuracy and 92.9% macro-F1 at its best epoch (3). Its 3
+    epochs took about 33 s each.
 - **Why:** the model's clearest weaknesses are in the data: broken replies, thin mixed and
   Arabizi cells, and intents that get confused. Pretraining loss was also still falling at the
   end of the first pass.

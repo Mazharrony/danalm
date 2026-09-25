@@ -13,9 +13,9 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
 | 1. Tokenizer | done | 16,384-token byte-level BPE; 14% fewer tokens than Qwen3.5 on Gulf Arabic |
 | 2. Data | done, except the human test set | 1.495B pretraining tokens; 18,547 SFT examples |
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
-| 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min on one RTX 4070 |
-| 5. SFT | next | |
-| 6. Evaluation | waits for the human test set | |
+| 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
+| 5. SFT | done | Valid JSON 100%, intent accuracy 92.9% on the SFT validation split |
+| 6. Evaluation | next: 64 English test messages are ready; the Arabic parts need a native speaker | |
 | 7. Quantization and deployment | later | |
 | 8. Presentation | later | |
 
@@ -49,9 +49,25 @@ Results so far:
     ([pilot](docs/results/phase4_pilot.md)).
   - Validation loss fell from 9.705 to 3.330, with no loss spikes and no restarts
     ([results](docs/results/phase4_pretrain.md)).
+  - A second pass over the same data brought it to 3.232 (D-031,
+    [results](docs/results/phase4_second_pass.md)).
+- **SFT (Phase 5):** the model answers `<|user|>message<|assistant|>{"intent": …, "reply": …}`.
+  The loss counts only the answer.
+  - Data: 20,572 training examples.
+    - Qwen checked every reply for broken words. The 763 broken ones were rewritten, and 679
+      of the rewrites passed.
+    - A top-up added 3,066 examples, mostly for the thin mixed and Arabizi cells and the
+      intents that get confused.
+  - Two sweeps (3 learning rates × 5 epochs each; the second on the second-pass base) ran,
+    with the choosing rule fixed in advance (D-029).
+  - The chosen model scores, on the SFT validation split: valid JSON 100%, intent accuracy
+    92.9% (macro-F1 92.5%), and replies in the right language 100%.
+  - The CAMeLBERT-mix classifier baseline scores 93.3% on the same split. These numbers
+    come from synthetic validation data. The honest score comes from the human test set in
+    Phase 6 ([results](docs/results/phase5_sft.md)).
 
-Open: **the human test set**, the one missing piece. Phase 6 cannot give an honest score without
-it (see [Test data](#test-data)).
+Open: **the Arabic, Arabizi and mixed parts of the human test set**. They need a native Gulf
+Arabic speaker. The 64-message English part is ready (see [Test data](#test-data)).
 
 The plan is in [docs/PROJECT_BRIEF.md](docs/PROJECT_BRIEF.md), and the reasons behind every
 choice are in [docs/DECISIONS.md](docs/DECISIONS.md). Every data source, with its licence and
@@ -64,9 +80,9 @@ gitignored: the repository shows how each set is built and checked, not the mess
 
 | Set | Size | Used for | Status |
 |---|---|---|---|
-| **Human test set** (`data/test/test_set.jsonl`) | ~420 messages planned | Phase 6: intent accuracy, macro-F1 and valid-JSON rate, per language | being built |
+| **Human test set** (`data/test/test_set.jsonl`) | ~420 messages planned, 64 so far | Phase 6: intent accuracy, macro-F1 and valid-JSON rate, per language | English part ready |
 | Pretraining validation split | 7.64M tokens, ~0.5% of each source's documents | Validation loss during pretraining | done |
-| SFT validation split | 968 examples | Validation loss during SFT. The same teacher wrote it as the training data, so it cannot replace the test set | done |
+| SFT validation split | 957 examples (11 of 968 dropped for broken replies) | Choosing the SFT model (D-029). The same teacher wrote it as the training data, so it cannot replace the test set | done |
 | Tokenizer evaluation sets | 10 sets of web text and customer-service messages | Comparing tokenizers in Phase 1 only | done |
 
 ### Human test set
@@ -86,13 +102,17 @@ design or choosing between models. The full guide is [docs/TEST_SET.md](docs/TES
 
 | Part | Needed | Now |
 |---|---:|---|
-| English, the 10 intents covered by public human-written test data | 50 | 65 candidates waiting for review |
+| English, the 10 intents covered by public human-written test data | 50 | **64 messages**, checked by a person (MR); 0 overlaps with training data |
 | English, the other 11 intents (telecom and most delivery intents) | 55 | a person writes them |
 | Gulf Arabic, all 21 intents | 105 | needs a native speaker |
 | Arabizi, all 21 intents | 105 | needs a native speaker |
 | Mixed, all 21 intents | 105 | needs a native speaker |
 
-**The 65 English candidates** (`data/test/candidates-en/review.csv`, D-025):
+**The English candidates** (D-025), reviewed on 2026-09-24:
+
+- **Result:** MR checked 67 candidates on a click-through page: the 65 below plus 2 more
+  CLINC150 test sentences. They kept 64, dropped 3 and corrected 1 intent. The sheet is
+  `data/test/candidates-en/review-human.csv`, and `import_review.py` wrote `test_set.jsonl`.
 
 - **Source:** the test splits of Banking77 (CC-BY-4.0) and CLINC150 (CC-BY-3.0), each pinned to
   a fixed revision. Their labels are mapped to our intents by rule. The train splits are never
@@ -205,6 +225,21 @@ Stop the teacher server first: the training scripts refuse to run while it is up
 | `uv run python scripts/pretrain.py --config configs/pretrain/full.yaml` | The full run: checkpoints every 250 steps, and rerunning the command resumes from the latest (a finished run exits at once) | ~4 h 50 min |
 | `uv run python scripts/pretrain_report.py --config configs/pretrain/report.yaml` | Curves, validation loss per source, train vs validation windows, sample continuations | ~1 min |
 
+### Phase 5: SFT
+
+Stop the teacher server before the training steps; the Qwen steps start it themselves.
+
+| Command | What it does | Time on the dev machine |
+|---|---|---|
+| `uv run pytest tests/test_sft_train.py tests/test_reply_check.py` | Chat format and loss masking, batching, batched greedy decoding, intent likelihoods, metrics, the selection rule | seconds |
+| `uv run python scripts/check_replies.py --config configs/sft/reply_check.yaml` | Qwen proofreads a sample of 500 replies (`check.scope=all`: every reply) | ~3 min (all: ~80 min) |
+| `uv run python scripts/write_replies.py --config configs/sft/fix_replies.yaml` | New replies for the broken ones | ~7 min |
+| `uv run python scripts/generate_sft.py --config configs/sft/topup.yaml` | Top-up and contrast examples (then `verify_sft.py` with the same config) | ~1 h 45 min |
+| `uv run python scripts/assemble_sft_v3.py --config configs/sft/v3.yaml` | Builds `data/sft/final-v3`: rewritten replies, top-up in training only, no copies of validation or test messages | seconds |
+| `uv run python scripts/sft.py --config configs/sft/train.yaml train.lr=3.0e-4 run_name=sft-r1-lr3e-4` | One SFT run (5 epochs, evaluated after each) | ~6 min |
+| `uv run python scripts/sft_report.py --config configs/sft/report.yaml` | Applies the D-029 rule to all runs, writes the results page and `artifacts/checkpoints/sft-selected.json` | seconds |
+| `uv run python scripts/baseline_camelbert.py --config configs/eval/baseline_camelbert.yaml` | The CAMeLBERT-mix intent classifier baseline (Phase 6, D-027) | ~2 min |
+
 ## Repository layout
 
 ```text
@@ -215,7 +250,7 @@ scripts/       command-line entry points
 src/danalm/    library: config, seeding, run tracking, data pipeline and token shards,
                HF sampler, labelled public datasets, ledger, dialect and reply checks,
                teacher server and client (with resumable answer logs), tokenizer, model,
-               training loop
+               training loop, SFT format and evaluation
 tests/         unit tests and tiny synthetic fixtures
 data/ runs/ artifacts/   gitignored: datasets, run records, tokenizers and checkpoints
 ```

@@ -1,0 +1,29 @@
+# Phase 7 (D-034): score the ONNX variants against PyTorch float32, choose the deployed variant
+# on the development sets, then score the human test set once per variant.
+#   uv run python scripts/evaluate_variants.py --config configs/deploy/phase7.yaml                   # dev + choice
+#   uv run python scripts/evaluate_variants.py --config configs/deploy/phase7.yaml phase7.split=test # after the choice is committed
+base: export.yaml
+run_name: phase7-eval
+
+phase7:
+  split: dev
+  out_dir: ${paths.artifacts_dir}/eval/phase7
+  dev_sets:                    # never the test set
+    sft_val: ${paths.data_dir}/sft/final-v4/val.jsonl     # 957, all varieties
+    real_dev: ${paths.data_dir}/sft/sft-real/dev.jsonl    # 804, English
+  threshold_set: real_dev      # each variant's threshold, as in D-033
+  variants: [fp32, int8, int4] # ONNX variants in artifacts/deploy (add a fallback here if one is built)
+  reference_threads: 16        # PyTorch float32 on the CPU without the cache: the D-029 decoding
+  onnx_threads: 8              # ONNX Runtime threads (speed only; latency is measured separately)
+  batch: 16                    # prompts of equal length per step
+  label_batch: 8               # messages per intent-scoring step
+  rule:                        # D-034
+    max_accuracy_drop: 0.01    # below onnx-fp32, on each development set
+    min_valid_json: 0.99
+    min_reply_lang: 0.99
+    min_same_answer: 0.995     # the PyTorch KV-cache path and onnx-fp32 against the reference
+    size_tie: 0.10             # within 10% in size: the lower median latency decides
+  latency_results: ${paths.artifacts_dir}/eval/phase7/latency.json   # needed only for a size tie
+  selected: ${paths.artifacts_dir}/deploy/selected.json
+  test_set: ${paths.data_dir}/test/test_set.jsonl
+  test_sha256: e6961fd244c57f2db1460052586b1dfd8183cc3269bad774577ef87660248397   # D-032

@@ -10,12 +10,14 @@ import numpy as np
 import pytest
 import torch
 
+from danalm.eval.cached import evaluate_cached
 from danalm.infer.decode import greedy_from, label_logprobs_from, prefill
 from danalm.infer.onnx import OnnxStep
 from danalm.infer.predictor import Predictor
 from danalm.model.export import empty_cache, export_onnx, numpy_step
 from danalm.model.transformer import DanaLM, ModelConfig
-from danalm.sft.evaluate import greedy_answers, label_logprobs
+from danalm.sft.evaluate import evaluate, greedy_answers, label_logprobs
+from danalm.sft.format import ChatTokens
 from danalm.tokenizer.bpe import TokenizerConfig, train
 
 BLOCK_HEAVY = """
@@ -41,6 +43,15 @@ PREFIX, CONTS = [5, 6], [[7], [8, 9], [10, 11, 12], [13, 14]]
 def model() -> DanaLM:
     torch.manual_seed(0)
     return DanaLM(TINY).eval()
+
+
+@pytest.fixture(scope="module")
+def tok():
+    return train(TokenizerConfig(
+        vocab_size=TINY.vocab_size, min_frequency=1, pretokenizer="standard",
+        eos_token="<|endoftext|>", pad_token="<|pad|>", extra_special_tokens=["<|user|>", "<|assistant|>"],
+        reserved_tokens=2, placeholder_tokens=["<PHONE>"], corpus="unused", out_dir="unused",
+    ), ["my card is not working", "where is my order", "call me on 0501234567"] * 20)  # fmt: skip
 
 
 @pytest.fixture(scope="module")
@@ -94,12 +105,7 @@ def test_onnx_step_matches_pytorch(model, onnx_path):
     assert (TINY.d_model, TINY.vocab_size) in shapes.values()
 
 
-def test_predictor_returns_the_schema_and_masks_pii(model, onnx_path, tmp_path):
-    tok = train(TokenizerConfig(
-        vocab_size=TINY.vocab_size, min_frequency=1, pretokenizer="standard",
-        eos_token="<|endoftext|>", pad_token="<|pad|>", extra_special_tokens=["<|user|>", "<|assistant|>"],
-        reserved_tokens=2, placeholder_tokens=["<PHONE>"], corpus="unused", out_dir="unused",
-    ), ["my card is not working", "where is my order", "call me on 0501234567"] * 20)  # fmt: skip
+def test_predictor_returns_the_schema_and_masks_pii(tok, onnx_path, tmp_path):
     tok.save(str(tmp_path / "tokenizer.json"))
     (tmp_path / "model.onnx").write_bytes(onnx_path.read_bytes())
     meta = {
@@ -118,9 +124,46 @@ def test_predictor_returns_the_schema_and_masks_pii(model, onnx_path, tmp_path):
         assert out["route"] == "escalate" and out["intent"] is None
 
 
+def test_cached_evaluation_equals_the_d029_evaluation(model, tok):
+    special = {
+        "user": "<|user|>",
+        "assistant": "<|assistant|>",
+        "eos": "<|endoftext|>",
+        "pad": "<|pad|>",
+    }
+    chat = ChatTokens.from_tokenizer(tok, special)
+    intents = ["card_not_working", "order_status", "other"]
+    rows = [{"message": m, "intent": i, "variety": "english"} for m, i in [
+        ("my card is not working", "card_not_working"), ("where is my order", "order_status"),
+        ("call me on 0501234567", "other"), ("my order", "order_status"), ("card", "card_not_working"),
+    ]]  # fmt: skip
+    norm = {"strip_diacritics": True, "unify_alef": False}
+    ev = {"max_new_tokens": 10, "gen_batch": 2, "score_batch": 2, "target_accuracy": 0.95}
+    langs = {"english": ["en"]}
+    ref_m, ref_p = evaluate(
+        model, tok, chat, rows, intents, norm, langs, ev, contextlib.nullcontext
+    )
+    m, p = evaluate_cached(numpy_step(model), lambda b: empty_cache(model, b), tok, chat, rows,
+                           intents, norm, langs, ev, batch=2, label_batch=1)  # fmt: skip
+    for a, b in zip(ref_p, p, strict=True):
+        assert {k: v for k, v in a.items() if "conf" not in k} == {
+            k: v for k, v in b.items() if "conf" not in k
+        }
+        assert abs(a["conf"] - b["conf"]) < 1e-4 and abs(a["lik_conf"] - b["lik_conf"]) < 1e-4
+    assert (
+        m["intent_accuracy"] == ref_m["intent_accuracy"] and m["valid_json"] == ref_m["valid_json"]
+    )
+
+
 def test_serving_modules_import_without_torch_or_datasketch():
     code = BLOCK_HEAVY + (
         "import danalm.text, danalm.sft.format\n"
         "import danalm.infer.decode, danalm.infer.onnx, danalm.infer.predictor\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_power_throttling_opt_out_only_reports_what_happened():
+    from danalm.utils.power import disable_power_throttling
+
+    assert disable_power_throttling() is (sys.platform == "win32")

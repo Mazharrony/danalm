@@ -89,7 +89,7 @@ def main() -> None:
     cpu, gpu = lat["cpu_float32"], lat["gpu_bf16"]
 
     lines = [
-        "# Phase 6 results: evaluation on the human test set (English part)",
+        f"# {p['title']}",
         "",
         f"Generated on {date.today().isoformat()} by `scripts/phase6_report.py`; do not edit by hand. "
         "Protocol: D-032, bars: D-030 in [DECISIONS.md](../DECISIONS.md).",
@@ -99,6 +99,7 @@ def main() -> None:
         "Arabic, Arabizi and mixed parts of the test set do not exist yet, so **this evaluation covers English "
         f"only**. With {n} messages, one message is {100 / n:.1f} points, so the intervals are wide.",
         "",
+        *([p["note"], ""] if p.get("note") else []),
         "## Results",
         "",
         "| System | Intent accuracy (95% interval) | Macro-F1 | Valid JSON | Reply in the right language |",

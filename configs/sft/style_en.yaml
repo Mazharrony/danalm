@@ -1,0 +1,42 @@
+# D-033 style top-up: English messages written the way real customers type, 6 requests per
+# intent (126 requests). Same filters, blind label judge and reply check as the other SFT data.
+#   uv run python scripts/generate_sft.py --config configs/sft/style_en.yaml
+#   uv run python scripts/verify_sft.py   --config configs/sft/style_en.yaml
+base: full.yaml
+run_name: sft-style-en
+seed: 3033                     # fresh personas, tones and sampling seeds
+
+sft:
+  only_varieties: [english]
+  cell_requests:
+    card_not_working/english: 6
+    lost_or_stolen_card/english: 6
+    balance_or_statement/english: 6
+    transfer_issue/english: 6
+    unrecognized_transaction/english: 6
+    fees_and_charges/english: 6
+    loans_and_credit/english: 6
+    bill_inquiry/english: 6
+    network_or_internet_issue/english: 6
+    plan_change/english: 6
+    sim_or_number/english: 6
+    roaming/english: 6
+    order_status/english: 6
+    missing_or_wrong_item/english: 6
+    cancel_order/english: 6
+    refund_request/english: 6
+    change_delivery_details/english: 6
+    failed_delivery/english: 6
+    account_access/english: 6
+    handoff_to_human/english: 6
+    other/english: 6
+  varieties:
+    english:
+      personas: [a busy customer typing on a phone, a US expat in Dubai, a British expat, an Indian expat,
+                 a Filipino expat, a Pakistani expat, an Emirati who writes in English, a customer in a rush]
+      style: >-
+        Write the message the way people really type into a support chat: short (often 3 to 10
+        words), blunt, usually lowercase, no greeting, sometimes with typos, missing words or slang
+        (like "net not working since morning" or "where is my order?? its been 2 hrs"), sometimes
+        only a question with no context. Use varied English (American, British, Indian, Gulf expat). Do not always mention
+        the UAE, AED or a city.

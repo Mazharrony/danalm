@@ -1,0 +1,12 @@
+# D-033: SFT on data/sft/final-v4, evaluated every epoch on the SFT validation split and the real
+# dev set. The runs (bases x peak LR):
+#   uv run python scripts/sft.py --config configs/sft/train_real.yaml train.lr=3.0e-4 run_name=sft-r3-first-lr3e-4
+#   uv run python scripts/sft.py --config configs/sft/train_real.yaml train.lr=1.0e-3 run_name=sft-r3-first-lr1e-3
+#   uv run python scripts/sft.py --config configs/sft/train_real.yaml train.lr=3.0e-4 run_name=sft-r3-second-lr3e-4 train.init=artifacts/checkpoints/pretrain-second/model.pt
+#   uv run python scripts/sft.py --config configs/sft/train_real.yaml train.lr=1.0e-3 run_name=sft-r3-second-lr1e-3 train.init=artifacts/checkpoints/pretrain-second/model.pt
+base: train.yaml
+run_name: sft-r3
+
+sft_data:
+  data_dir: ${paths.data_dir}/sft/final-v4
+  extra_dev: {real: "${paths.data_dir}/sft/sft-real/dev.jsonl"}   # never trained on (D-033)

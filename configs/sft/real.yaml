@@ -1,0 +1,109 @@
+# D-033: real customer messages (CC-BY) for SFT, from the TRAIN splits of Banking77 and CLINC150,
+# with the D-025 label maps (identical to configs/data/test_candidates_en.yaml; a test checks it).
+# 15% of each intent is held out as the real dev set; the test splits stay reserved.
+#   uv run python scripts/fetch_labelled.py --config configs/sft/real.yaml   # all mapped messages + ledger
+#   uv run python scripts/split_real.py     --config configs/sft/real.yaml   # decontaminate, dev holdout, cap
+#   uv run python scripts/write_replies.py  --config configs/sft/real.yaml   # Qwen replies
+#   uv run python scripts/verify_sft.py     --config configs/sft/real.yaml   # blind label judge
+base: full.yaml
+run_name: sft-real
+
+fetch:
+  out_dir: ${paths.data_dir}/sft/${run_name}
+  used_for: supervised fine-tuning (Phase 5b, D-033); 15% held out as the real dev set, never trained on
+  sources:
+    - name: banking77-train
+      url: https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/{revision}/banking_data/train.csv
+      revision: 57ec275d8078af65b7731c2a98be812d844a6d6b
+      text_column: text
+      label_column: category
+      label_map:
+        card_not_working: card_not_working
+        declined_card_payment: card_not_working
+        contactless_not_working: card_not_working
+        declined_cash_withdrawal: card_not_working
+        virtual_card_not_working: card_not_working
+        card_arrival: card_not_working
+        pin_blocked: card_not_working
+        card_swallowed: card_not_working
+        lost_or_stolen_card: lost_or_stolen_card
+        failed_transfer: transfer_issue
+        declined_transfer: transfer_issue
+        pending_transfer: transfer_issue
+        transfer_not_received_by_recipient: transfer_issue
+        balance_not_updated_after_bank_transfer: transfer_issue
+        card_payment_not_recognised: unrecognized_transaction
+        cash_withdrawal_not_recognised: unrecognized_transaction
+        direct_debit_payment_not_recognised: unrecognized_transaction
+        transaction_charged_twice: unrecognized_transaction
+        card_payment_fee_charged: fees_and_charges
+        transfer_fee_charged: fees_and_charges
+        cash_withdrawal_charge: fees_and_charges
+        exchange_charge: fees_and_charges
+        passcode_forgotten: account_access
+        exchange_rate: other
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: null
+      max_per_label: null
+      max_rows: null
+      licence: CC-BY-4.0
+      kind: real (online banking queries; origin not documented)
+      description: Banking77 train split from the original PolyAI repository, D-025 label map
+    - name: clinc150-train
+      repo_id: clinc/clinc_oos
+      revision: 155b9c710419136e17307b80d0a13e68cd46b4ec
+      files: plus/train-*.parquet
+      text_column: text
+      label_column: intent
+      label_map:
+        balance: balance_or_statement
+        transactions: balance_or_statement
+        spending_history: balance_or_statement
+        card_declined: card_not_working
+        damaged_card: card_not_working
+        report_lost_card: lost_or_stolen_card
+        report_fraud: unrecognized_transaction
+        interest_rate: fees_and_charges
+        international_fees: fees_and_charges
+        credit_limit: loans_and_credit
+        credit_limit_change: loans_and_credit
+        min_payment: loans_and_credit
+        application_status: loans_and_credit
+        account_blocked: account_access
+        order_status: order_status
+        greeting: other
+        thank_you: other
+        goodbye: other
+        exchange_rate: other
+        oos: other
+      exclude_label_prefixes: []
+      variety: english
+      max_per_intent: null
+      max_per_label: null
+      max_rows: null
+      licence: CC-BY-3.0
+      kind: real (crowdsourced)
+      description: CLINC150 train split ("plus"), D-025 label map
+
+split:                         # scripts/split_real.py (D-033)
+  test_set: ${paths.data_dir}/test/test_set.jsonl
+  overlap: {normalize: {strip_diacritics: true, unify_alef: false}, char_ngram: 3, num_perm: 128, near_dup_threshold: 0.6}   # as configs/data/overlap.yaml
+  dev_share: 0.15              # per intent, seeded
+  max_per_intent: 500          # training candidates, spread over the source labels
+  dev: ${fetch.out_dir}/dev.jsonl
+  train: ${fetch.out_dir}/train_candidates.jsonl
+
+replies:
+  inputs: ["${split.train}"]
+  varieties:
+    english: {reply_style: "${sft.reply_styles.english}", reply_langs: [en], gulf_filter: false}
+  batch: 10
+  max_rows: null
+  out_dir: ${paths.data_dir}/sft/sft-real-replies
+  params: ${sft.params}
+  system: ${sft.system}
+  prompt: ${sft.reply_prompt}
+
+verify:
+  inputs: ["${replies.out_dir}/generated.jsonl"]

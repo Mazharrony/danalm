@@ -50,4 +50,6 @@ phase6:
 
     Output exactly {n} lines, each one JSON object:
     {{"n": <number>, "answers": true or false, "polite_clear": true or false, "language": true or false, "safe": true or false, "note": "<short reason if any answer is false, else empty>"}}.
+  title: "Phase 6 results: evaluation on the human test set (English part)"
+  note: null                   # an optional paragraph under the test-set description
   results_md: docs/results/phase6_eval.md

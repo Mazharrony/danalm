@@ -7,6 +7,7 @@ run_name: sft-lr3e-4
 
 sft_data:
   data_dir: ${paths.data_dir}/sft/final-v3      # D-031 (cleaned replies and top-up)
+  extra_dev: {}                # {name: jsonl with message/intent/variety}: evaluated every epoch, never trained on
   tokenizer_file: ${paths.artifacts_dir}/tokenizers/danalm-v1/tokenizer.json
   special: {user: "<|user|>", assistant: "<|assistant|>", eos: "<|endoftext|>", pad: "<|pad|>"}
   normalize: {strip_diacritics: true, unify_alef: false}   # as the SFT data (configs/sft/generate.yaml)

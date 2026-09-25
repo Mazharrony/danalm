@@ -1,0 +1,24 @@
+# D-033 results page and selection for the real-message round.
+#   uv run python scripts/evaluate_dev.py       --config configs/sft/report_real.yaml   # the Phase 5 model on the real dev set
+#   uv run python scripts/real_round_report.py  --config configs/sft/report_real.yaml
+base: train_real.yaml
+run_name: sft-report-real
+
+report:
+  checkpoints_dir: ${paths.artifacts_dir}/checkpoints
+  runs:
+    "first pass, lr 3e-4": sft-r3-first-lr3e-4
+    "first pass, lr 1e-3": sft-r3-first-lr1e-3
+    "second pass, lr 3e-4": sft-r3-second-lr3e-4
+    "second pass, lr 1e-3": sft-r3-second-lr1e-3
+  min_sft_val: 0.909           # D-033 guard: the Phase 5 model's 92.9% minus 2 points
+  tie: 0.01
+  real_dev: ${paths.data_dir}/sft/sft-real/dev.jsonl
+  baseline_checkpoint: ${paths.artifacts_dir}/checkpoints/sft-r1-lr3e-4/epoch_3.pt   # the Phase 5 model
+  baseline_out: ${paths.artifacts_dir}/eval/phase5b/phase5_model_on_real_dev.json
+  split_stats: ${paths.data_dir}/sft/sft-real/split_stats.json
+  data_stats: ${paths.data_dir}/sft/final-v4/stats.json
+  sources: [real-cc-by, style-en]
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5b.json
+  plot: docs/results/phase5b_real.png
+  results_md: docs/results/phase5b_real.md

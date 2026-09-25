@@ -1,0 +1,20 @@
+# D-033: the SFT data of the real-message round, data/sft/final-v4 = final-v3 + the real CC-BY
+# messages + the English style top-up (training split only; the validation split is unchanged).
+#   uv run python scripts/assemble_sft_v4.py --config configs/sft/v4.yaml
+base: ../base.yaml
+run_name: sft-v4
+
+assemble:
+  base_dir: ${paths.data_dir}/sft/final-v3
+  out_dir: ${paths.data_dir}/sft/final-v4
+  sources:
+    - name: real-cc-by
+      verified: ${paths.data_dir}/sft/sft-real-replies/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-real/judged.jsonl
+    - name: style-en
+      verified: ${paths.data_dir}/sft/sft-style-en/verified.jsonl
+      reply_check: ${paths.data_dir}/sft/reply-check-style/judged.jsonl
+  test_set: ${paths.data_dir}/test/test_set.jsonl
+  real_dev: ${paths.data_dir}/sft/sft-real/dev.jsonl
+  normalize: {strip_diacritics: true, unify_alef: false}   # as the SFT data
+  overlap: {normalize: {strip_diacritics: true, unify_alef: false}, char_ngram: 3, num_perm: 128, near_dup_threshold: 0.6}   # as configs/data/overlap.yaml

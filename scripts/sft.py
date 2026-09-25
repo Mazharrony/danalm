@@ -7,7 +7,9 @@ Starts from train.init (a pretrained model.pt) and trains train.epochs epochs on
 - measures the development metrics on val.jsonl: the answer loss, then with greedy decoding the
   valid-JSON rate, intent accuracy and macro-F1 and the reply-language rate, intent by
   likelihood, and the D-030 coverage;
-- writes the validation predictions to val_predictions_epoch<k>.jsonl.
+- writes the validation predictions to val_predictions_epoch<k>.jsonl;
+- does the same for every set in sft_data.extra_dev (e.g. the real dev set of D-033): its
+  metrics go under dev_<name>, its predictions to dev_<name>_predictions_epoch<k>.jsonl.
 Metrics go to <out_dir>/metrics.jsonl and W&B. A finished run exits at once; an unfinished one
 starts over (a run takes minutes). Refuses to run while the teacher server is up.
 """
@@ -71,6 +73,8 @@ def main() -> None:
     chat = ChatTokens.from_tokenizer(tok, d["special"])
     intents = [i["name"] for i in load_intents(d["intents_file"])]
     rows = {s: read_jsonl(Path(d["data_dir"]) / f"{s}.jsonl") for s in ("train", "val")}
+    # extra development sets, evaluated after every epoch but never trained on (D-033)
+    extra_dev = {name: read_jsonl(path) for name, path in (d.get("extra_dev") or {}).items()}
     enc = {s: [example_ids(tok, chat, r["message"], r["target"], d["normalize"]) for r in rs]
            for s, rs in rows.items()}  # fmt: skip
     prefix, conts = label_continuations(tok, intents)
@@ -128,15 +132,23 @@ def main() -> None:
                             d["reply_langs"], ev, autocast)  # fmt: skip
         record = {"epoch": epoch, "step": step, "lr_peak": t["lr"],
                   "train_loss": sum(losses) / len(losses), "val_loss": val_loss, **m,
-                  "train_seconds": round(train_seconds, 1),
-                  "eval_seconds": round(time.perf_counter() - start, 1)}  # fmt: skip
+                  "train_seconds": round(train_seconds, 1)}  # fmt: skip
+        predictions = {"val": preds}
+        for name, extra in extra_dev.items():  # e.g. the real dev set of D-033
+            record[f"dev_{name}"], predictions[f"dev_{name}"] = evaluate(
+                model, tok, chat, extra, intents, d["normalize"], d["reply_langs"], ev, autocast
+            )
+        record["eval_seconds"] = round(time.perf_counter() - start, 1)
         with open(metrics_path, "a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(record) + "\n")
-        with open(
-            out / f"val_predictions_epoch{epoch}.jsonl", "w", encoding="utf-8", newline="\n"
-        ) as fh:
-            fh.writelines(json.dumps(p, ensure_ascii=False) + "\n" for p in preds)  # fmt: skip
+        for split, rows_out in predictions.items():
+            with open(out / f"{split}_predictions_epoch{epoch}.jsonl", "w", encoding="utf-8",
+                      newline="\n") as fh:  # fmt: skip
+                fh.writelines(json.dumps(p, ensure_ascii=False) + "\n" for p in rows_out)
         flat = {k: v for k, v in record.items() if not isinstance(v, dict)}
+        for name in extra_dev:
+            flat |= {f"dev_{name}_{k}": v for k, v in record[f"dev_{name}"].items()
+                     if not isinstance(v, dict)}  # fmt: skip
         run.wandb.log(flat, step=step)
         print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in flat.items()}),
               flush=True)  # fmt: skip

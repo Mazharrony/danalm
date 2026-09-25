@@ -39,7 +39,8 @@ def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[d
     """One request per (intent, variety, repeat), with a seeded persona, tone and sampling seed.
     `only_intents` / `only_varieties` (lists or null) restrict the plan, e.g. for a top-up run.
     `cell_requests` ({"intent/variety": n}, optional) sets the number of requests per cell
-    instead; cells it does not list get none (D-031 top-up)."""
+    instead; cells it does not list get none (D-031 top-up). A key may name a question type too
+    ("intent/variety/qtype", D-037): its rule in `question_types` joins the message rule."""
     rng = random.Random(seed)
     cells = sft.get("cell_requests")
     specs = []
@@ -50,12 +51,13 @@ def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[d
             if sft["only_varieties"] and variety not in sft["only_varieties"]:
                 continue
             # a variety may ask for more requests when its yield is low (e.g. mixed)
-            n = v.get("requests_per_cell", sft["requests_per_cell"])
-            if cells is not None:
-                n = cells.get(f"{intent['name']}/{variety}", 0)
-            for _ in range(n):
-                specs.append(
-                    {
+            for qtype in [None, *(sft.get("question_types") or {})]:
+                n = v.get("requests_per_cell", sft["requests_per_cell"]) if qtype is None else 0
+                if cells is not None:
+                    key = f"{intent['name']}/{variety}" + (f"/{qtype}" if qtype else "")
+                    n = cells.get(key, 0)
+                for _ in range(n):
+                    spec = {
                         **intent,
                         "intent": intent["name"],
                         "variety": variety,
@@ -63,7 +65,9 @@ def plan_requests(intents: list[dict], sft: dict[str, Any], seed: int) -> list[d
                         "tone": rng.choice(sft["tones"]),
                         "seed": rng.randrange(2**31),
                     }
-                )
+                    if qtype:
+                        spec["qtype"] = qtype
+                    specs.append(spec)
     return specs
 
 
@@ -79,8 +83,10 @@ def build_prompt(spec: dict[str, Any], sft: dict[str, Any]) -> str:
         style=v["style"].strip(),
         reply_style=v["reply_style"],
         intent_rule=sft["intent_rules"].get(spec["intent"], ""),
-        # optional: makes the message clearly this intent (D-031); unused by older prompts
-        message_rule=(sft.get("message_rules") or {}).get(spec["intent"], ""),
+        # optional: makes the message clearly this intent (D-031) and of a question type (D-037);
+        # unused by older prompts
+        message_rule=(sft.get("message_rules") or {}).get(spec["intent"], "")
+        + (" " + sft["question_types"][spec["qtype"]] if spec.get("qtype") else ""),
     )
 
 
@@ -128,6 +134,7 @@ class Filter:
             "domain": spec["domain"],
             "persona": spec["persona"],
             "tone": spec["tone"],
+            **({"qtype": spec["qtype"]} if spec.get("qtype") else {}),
         }, "kept"
 
 
@@ -139,7 +146,8 @@ def main() -> None:
     out = Path(sft["out_dir"])
     write_provenance(out, cfg)
     specs = plan_requests(load_intents(sft["intents_file"]), sft, cfg["seed"])
-    keys = [f"{s['intent']}|{s['variety']}|{s['seed']}" for s in specs]
+    keys = [f"{s['intent']}|{s['variety']}|{s['seed']}" + (f"|{s['qtype']}" if s.get("qtype") else "")
+            for s in specs]  # fmt: skip
     log = AnswerLog(out / "answers.jsonl", keys)
     resumed = len(log.done)
     if resumed:

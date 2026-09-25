@@ -12,6 +12,7 @@ from collections import defaultdict
 from collections.abc import Iterator
 from typing import Any
 
+import pyarrow as pa
 import pyarrow.parquet as pq
 
 
@@ -77,7 +78,9 @@ def iter_labelled(src: dict[str, Any], fs: Any) -> Iterator[tuple[str, str]]:
     for path in paths:
         with fs.open(path, "rb") as fh:
             pf = pq.ParquetFile(fh)
-            names = label_names(pf, src["label_column"])
+            kind = pf.schema_arrow.field(src["label_column"]).type
+            # a text column holds the label name itself (e.g. Bitext); integers need ClassLabel names
+            names = None if pa.types.is_string(kind) or pa.types.is_large_string(kind) else label_names(pf, src["label_column"])  # fmt: skip
             table = pf.read(columns=[src["text_column"], src["label_column"]]).to_pydict()
-        for text, label_id in zip(table[src["text_column"]], table[src["label_column"]], strict=True):  # fmt: skip
-            yield text, names[label_id]
+        for text, label in zip(table[src["text_column"]], table[src["label_column"]], strict=True):
+            yield text, label if names is None else names[label]

@@ -1327,3 +1327,56 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   Python demo did, and masked an email and a phone number.
   - Time: about 1.3 s per message in the app's hidden browser pane with 4 threads. The native CPU
     takes 0.25 s.
+
+## D-037 · Phase 5c · Question types the model has not seen, and replies that stick to the message
+
+- **Why:** the owner tried the demo on 2026-09-25, and two messages went wrong.
+  - "i asked one refund from amazon, can you check if i received that" came out as
+    refund_request with confidence 1.00. But the reply was invented: "I am sorry you received a
+    damaged product".
+  - "can i send money by bank app to Bangladesh?" came out as roaming with confidence 0.28, so it
+    was escalated. Its draft reply was about telecom packages.
+  - The training data explains both:
+    - only 20 of 24,263 training messages ask about a refund already requested;
+    - 60 of the 139 messages that name a country are roaming;
+    - only 11 of 1,488 transfer messages are phrased "can I" or "how do I".
+  - So the messages are mostly complaints. Status checks, how-to questions, questions about
+    conditions or costs, and off-topic requests are rare.
+- **Decision:** about 10,000 new training examples from three sources. Everything below is fixed
+  before anything is fetched or generated.
+  1. **Bitext** customer support, retail banking and telco (CDLA-Sharing-1.0, at the revisions in
+     the ledger).
+     - Only Bitext's English messages are used; its replies are not.
+     - Their intents map to ours by the label map in `configs/sft/qtypes.yaml`. Labels without a
+       clear home are skipped.
+     - Up to 250 per intent of ours, spread over the source labels.
+  2. **MASSIVE** en-US and ar-SA train splits (CC-BY-4.0): everyday requests such as weather,
+     alarms, music and trivia go to `other`; takeaway_query goes to order_status.
+  3. **Local Qwen** writes Gulf Arabic, Arabizi and mixed messages on a grid of 21 intents ×
+     5 question types × 3 varieties, 3 requests per cell. handoff_to_human × cost is left out.
+     - The question types: a status check; how-to or "can I"; conditions or limits; cost; and a
+       mention of another country, currency or trip outside roaming.
+  - **Replies:** Qwen writes all the new ones, under a stricter rule. They refer only to what the
+    customer wrote, and never assume a reason, a product problem, an amount, a date or an outcome.
+  - **The same filters as before:** the blind label judge keeps only messages whose label it
+    agrees with; the reply check drops broken replies; repeats and near copies of test or dev
+    messages are dropped.
+- **Question-type dev set:** 15% of the Bitext and MASSIVE messages, per intent of ours and
+  seeded. It is held out before anything else and never trained on.
+- **Training:** the D-029 recipe on final-v5, which is final-v4 plus the new examples: both
+  pretraining bases × peak learning rates 3e-4 and 1e-3, 5 epochs each.
+- **Selection:**
+  - Guards: SFT-validation accuracy of at least 90.9%, and real-dev accuracy of at least 93.4%
+    (the D-033 model's 94.4% minus 1 point).
+  - Among the checkpoints that pass, the highest intent accuracy on the question-type dev set
+    wins.
+  - Within 1 point of the best: higher real-dev accuracy, then higher SFT-validation accuracy.
+- **Reply faithfulness:** the D-032 reply judge (Qwen) rates a fixed sample of 300 development
+  replies (150 question-type dev, 150 real dev), for the D-033 model and for the chosen one.
+  - The share judged "safe" (no invented facts, no claimed actions) and "all four yes" are
+    reported before and after.
+  - It is not a selection gate.
+- **Test:** the chosen model is scored once on the English test set with the D-032 protocol
+  (bf16 on the GPU, like Phase 6 and 6b). Quantization and deployment follow as a separate step.
+- **Time:** about 2.5–3 h of teacher time (heavy CPU load, and the PC's BIOS is not updated;
+  every step resumes after a crash), and about 1.5 h on the GPU.

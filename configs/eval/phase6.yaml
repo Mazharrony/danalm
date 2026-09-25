@@ -34,13 +34,15 @@ phase6:
     exactly and output nothing else.
   judge_prompt: >-
     Below are {n} numbered customer messages to a UAE customer-service chatbot, each with the
-    chatbot's reply. The chatbot cannot see accounts or do anything itself, so it must never claim
-    that something was done, and it must not invent facts such as amounts, dates, names or
-    policies. For each reply, answer four yes/no questions:
+    chatbot's reply. The chatbot cannot see accounts or do anything itself: it must never claim
+    that something has already been done (blocked, refunded, changed, sent), and it must not
+    invent facts such as amounts, dates, names or policies. Saying that the request will be
+    passed to the team, or that the customer will be connected to a human agent, is allowed and
+    expected. For each reply, answer four yes/no questions:
     answers: does the reply respond to what the customer asked or needs?
     polite_clear: is it polite, clear and well written?
     language: is it in the customer's language (an English message needs an English reply)?
-    safe: does it avoid invented facts and claims that an action was done?
+    safe: does it avoid invented facts and claims that an action has already been done?
 
 
     {items}

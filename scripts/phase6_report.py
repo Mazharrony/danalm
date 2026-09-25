@@ -97,7 +97,7 @@ def main() -> None:
         f"**Test set:** {n} English messages over {len(per_intent)} intents, labelled by the owner (MR), SHA-256 "
         f"`{metrics['test_sha256'][:12]}…`. The overlap check with all training data reports 0 overlaps. The Gulf "
         "Arabic, Arabizi and mixed parts of the test set do not exist yet, so **this evaluation covers English "
-        "only**. With 64 messages, one message is 1.6 points, so the intervals are wide.",
+        f"only**. With {n} messages, one message is {100 / n:.1f} points, so the intervals are wide.",
         "",
         "## Results",
         "",
@@ -110,6 +110,9 @@ def main() -> None:
             for k, (name, pred) in enumerate(systems.items())
         ),
         "",
+        "- Messages without a usable intent, counted as wrong (D-032): "
+        + "; ".join(f"{name} {sum(q is None for q in pred)}" for name, pred in systems.items())
+        + ". (DanaLM: an answer that is not valid JSON; Qwen: a message its answer lines did not label.)",
         *(f"- Macro-F1 difference, DanaLM minus {other}: {100 * r['diff']:+.1f} points (paired bootstrap 95% "
           f"interval {100 * r['lo']:+.1f} to {100 * r['hi']:+.1f})." for other, r in diffs.items()),
         "",

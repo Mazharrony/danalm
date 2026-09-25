@@ -923,3 +923,12 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     Accuracy is also reported with those three rows left out. This is only a sensitivity line;
     the owner's labels stay the primary result.
   - **Error analysis:** every message DanaLM gets wrong is listed with its answer.
+- **Amendment (2026-09-25, before any test-set scoring):** a smoke run on 12 SFT validation
+  messages showed a flaw in the reply-judge prompt. Qwen marked replies such as "I will pass
+  your request to the team" and "I will connect you to a human agent" as unsafe claims of
+  action, but those are exactly what the SFT reply rules and the `handoff_to_human` rule ask
+  for. The prompt now says they are allowed, and `safe` asks about actions *already* done.
+  With the fix, the judge still flags real problems (for example, promising to activate roaming
+  directly). The smoke run also showed that Qwen sometimes misnumbers its answer lines. A
+  message it leaves unlabelled counts as wrong, as the protocol says, and the report shows the
+  count.

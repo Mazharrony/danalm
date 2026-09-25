@@ -35,6 +35,7 @@
   .on_device { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
   .escalate { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
   .small { font-size: 14px; color: var(--muted); }
+  .draft { color: var(--muted); font-style: italic; }
   a { color: var(--accent); }
 </style>
 </head>
@@ -156,11 +157,16 @@ async function answer() {
   await new Promise((r) => setTimeout(r, 30)); // let the page repaint before the model runs
   try {
     const out = await predictor.predict(msg);
+    const sent = out.route === "on_device";
     $("o-intent").textContent = out.intent ?? "(no valid answer)";
-    $("o-reply").textContent = out.reply ?? "";
+    // an escalated answer is never sent: show its draft greyed out, so nobody mistakes it for the reply
+    $("o-reply").textContent = out.reply ? (sent ? out.reply : `Not sent. Draft: ${out.reply}`) : "";
+    $("o-reply").className = sent ? "" : "draft";
     $("o-conf").textContent = out.confidence.toFixed(2);
-    $("o-route").innerHTML = `<span class="badge ${out.route}">${out.route === "on_device" ? "answer on the device" : "escalate"}</span>` +
-      (out.valid_json && !out.reply_fits ? " (reply not in the customer's language)" : "");
+    const why = !out.valid_json ? "no valid answer" : !out.reply_fits ? "reply not in the customer's language"
+      : `confidence below ${predictor.meta.threshold.toFixed(2)}`;
+    $("o-route").innerHTML = sent ? `<span class="badge on_device">answer on the device</span>`
+      : `<span class="badge escalate">escalate to a person</span> (${why})`;
     $("o-time").textContent = `${Math.round(out.latency_ms)} ms`;
     $("o-masked").textContent = out.message_masked;
     $("out").hidden = false;

@@ -1,9 +1,41 @@
 # DanaLM (دانة)
 
-A small (~30–60M parameter) decoder-only language model trained from scratch for UAE customer
-service in Gulf Arabic, English, Arabizi and mixed text. For each customer message it returns
-strict JSON, `{"intent": "...", "reply": "..."}`. It is meant to run quantized on a CPU or phone:
-it answers the easy majority of messages on-device and hands the rest to a bigger model or a human.
+**A 62M-parameter language model, trained from scratch on one RTX 4070, for UAE customer
+service.** It reads a customer's message in Gulf Arabic, English, Arabizi or a mix of them, and
+answers with strict JSON: `{"intent": "...", "reply": "..."}`.
+
+It is built to run quantized on a CPU or a phone. It handles the easy majority of messages on the
+device and passes the rest to a bigger model or a person. The name comes from *dana* (دانة), the
+Gulf pearl: small but valuable.
+
+How it is built:
+
+- Every run can be reproduced from its config, seed and git commit.
+- Every data source is licence-checked and counted in the [data ledger](docs/DATA_LEDGER.md).
+- Every decision is recorded in [DECISIONS.md](docs/DECISIONS.md), together with the rule that
+  settled it, written down before the result was known.
+
+## Where it stands (2026-09-25)
+
+| | DanaLM | For comparison |
+|---|---|---|
+| Size | 62.1M parameters, 237 MB in float32 | CAMeLBERT-mix classifier: 110M; Qwen3.5-35B-A3B |
+| Valid JSON | **100%** | — |
+| Reply in the customer's language | **100%** | — |
+| Intent accuracy, 64 real English test messages | **56%** | CAMeLBERT 47%, Qwen zero-shot 89% |
+| Intent accuracy, synthetic validation set (957) | 93% | CAMeLBERT 93% |
+| CPU speed (4 threads, not optimised yet) | 0.63 s per message | — |
+
+The main open problem is the drop from 93% on synthetic data to 56% on real messages. The
+training messages were written by a teacher model, and they don't match how real customers
+write.
+
+Next steps:
+
+1. Train on real, openly licensed customer messages.
+2. Quantize and deploy (Phase 7).
+3. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set, which need a native
+   speaker.
 
 ## Progress
 
@@ -19,7 +51,7 @@ it answers the easy majority of messages on-device and hands the rest to a bigge
 | 7. Quantization and deployment | later | |
 | 8. Presentation | later | |
 
-Results so far:
+Results by phase:
 
 - **Tokenizer (Phase 1):** `danalm-v1` is a 16,384-token byte-level BPE for Arabic, English and
   Arabizi. Against Qwen3.5's 248k-token tokenizer, it needs 14% fewer tokens on Gulf Arabic and

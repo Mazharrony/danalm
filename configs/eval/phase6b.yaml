@@ -1,0 +1,18 @@
+# D-033: the real-message round's model on the same human test set, with the D-032 protocol.
+#   uv run python scripts/evaluate_test.py    --config configs/eval/phase6b.yaml
+#   uv run python scripts/evaluate_teacher.py --config configs/eval/phase6b.yaml
+#   uv run python scripts/phase6_report.py    --config configs/eval/phase6b.yaml
+base: phase6.yaml
+run_name: phase6b-eval
+
+phase6:
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5b.json   # the coverage threshold comes from the real dev set
+  out_dir: ${paths.artifacts_dir}/eval/phase6b
+  title: "Phase 6 results for the real-message round (D-033): the human test set, English part"
+  note: >-
+    This model was also trained on real messages from the train splits of Banking77 and CLINC150
+    (D-033), the same datasets whose test splits the English test set comes from. Near copies of
+    the test messages were removed from training, but part of the English gain comes from the
+    shared style. The Gulf Arabic, Arabizi and mixed test parts remain the real check. Phase 6's
+    first result is in [phase6_eval.md](phase6_eval.md).
+  results_md: docs/results/phase6b_eval.md

@@ -73,6 +73,23 @@ Batch 1 on the CPU (Intel64 Family 6 Model 183 Stepping 1, GenuineIntel), 50 mes
 
 pytorch-fp32 is the setting of D-032 (no cache). Its file is the PyTorch checkpoint. The PyTorch rows include PyTorch's own memory; the ONNX rows never import PyTorch, as in the service.
 
+## Human test set: accuracy before and after quantization
+
+The English part (64 messages, SHA-256 `e6961fd244c5…`), scored once per system after the choice was committed (D-034). The test messages come from the test splits of the datasets whose train splits D-033 and D-037 trained on (see their caveats).
+
+| System | Intent accuracy (95% interval) | Macro-F1 | Valid JSON | Reply language | Same intent as PyTorch float32 | Answered at the dev threshold (accuracy) |
+|---|---|---:|---:|---:|---:|---|
+| pytorch-fp32 | 84.4% (54/64; 74–91%) | 85.1% | 100.0% | 100.0% | – | 92.2% (89.8%) |
+| onnx-fp32 | 84.4% (54/64; 74–91%) | 85.1% | 100.0% | 100.0% | 100.0% | 92.2% (89.8%) |
+| onnx-int8 | 82.8% (53/64; 72–90%) | 83.8% | 100.0% | 100.0% | 98.4% | 89.1% (91.2%) |
+| onnx-int4 | 85.9% (55/64; 75–92%) | 87.0% | 100.0% | 100.0% | 92.2% | 90.6% (89.7%) |
+
+Phase 6c scored the same model in bf16 on the GPU: 84.4% ([phase6c_eval.md](phase6c_eval.md)).
+
+Qwen judged the deployed variant's 64 valid test replies with the D-032 prompt: answers 96.9% (62/64; 89–99%), polite clear 89.1% (57/64; 79–95%), language 98.4% (63/64; 92–100%), safe 98.4% (63/64; 92–100%). **All four yes: 87.5% (56/64; 77–94%).** Phase 6c, the same model unquantized: 87.5% (56/64).
+
+Broken answers of the deployed variant on the test set: t0013 (reply: 'I cannot provide الخصم, but I will pass your question to someone who c').
+
 ## Reply guard (D-035)
 
 The predictor escalates a reply that does not fit the customer's language (D-035), so it was in place before this model was scored. Applied here to the saved predictions; no model was re-run. Most rejections are English replies with Arabic letters, which D-037 found more often in this model. The test rows are still not a clean estimate: the guard was designed after the D-033 model's test run.
@@ -94,6 +111,10 @@ The predictor escalates a reply that does not fit the customer's language (D-035
 | qtype_dev | onnx-fp32 | 24 of 1298 | 1260 → 1237 | 93.4% → 93.8% |
 | qtype_dev | onnx-int8 | 20 of 1298 | 1262 → 1243 | 93.3% → 93.6% |
 | qtype_dev | onnx-int4 | 12 of 1298 | 1259 → 1248 | 93.5% → 93.7% |
+| test | pytorch-fp32 | 2 of 64 | 59 → 57 | 89.8% → 91.2% |
+| test | onnx-fp32 | 2 of 64 | 59 → 57 | 89.8% → 91.2% |
+| test | onnx-int8 | 0 of 64 | 57 → 57 | 91.2% → 91.2% |
+| test | onnx-int4 | 1 of 64 | 58 → 57 | 89.7% → 91.2% |
 
 Every rejected reply:
 
@@ -275,3 +296,8 @@ Every rejected reply:
 | qtype_dev | onnx-int4 | most popular radio channel | سأمرر سؤالك عن الport إلى الفريق المختص لمساعدتك. |
 | qtype_dev | onnx-int4 | brighten lights living room lamp | سأمرر طلبك الخاص بالإضاءة إلى الفريق المختص لمساعدتك. |
 | qtype_dev | onnx-int4 | display trains going to antwerp after two p. m. saturday | I am unable to play pتيجة trains for you. I will pass this request to a team member who can help. |
+| test | pytorch-fp32 | have i gone over my entertainment budget | I cannot provide cooking instructions orlete عناءot items. Your request will be passed on to someone who can help. |
+| test | pytorch-fp32 | My bags were stolen. I need a new card but need to cancel the stolen one. | Please reach out to our customer service team to discuss canceling your stolen card. They will provide the necessary steps to ensure your account is safe andاصابي. |
+| test | onnx-fp32 | have i gone over my entertainment budget | I cannot provide cooking instructions orlete عناءot items. Your request will be passed on to someone who can help. |
+| test | onnx-fp32 | My bags were stolen. I need a new card but need to cancel the stolen one. | Please reach out to our customer service team to discuss canceling your stolen card. They will provide the necessary steps to ensure your account is safe andاصابي. |
+| test | onnx-int4 | have i gone over my entertainment budget | I cannot provide الخصم, but I will pass your question to someone who can help. |

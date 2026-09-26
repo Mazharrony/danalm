@@ -15,44 +15,60 @@ How it is built:
 - Every decision is recorded in [DECISIONS.md](docs/DECISIONS.md), together with the rule that
   settled it, written down before the result was known.
 
-## Where it stands (2026-09-25)
+## Where it stands (2026-09-26)
 
 | | DanaLM | For comparison |
 |---|---|---|
 | Size | 62.1M parameters; deployed as a **78 MB INT4 ONNX model**, no PyTorch needed | CAMeLBERT-mix classifier: 110M; Qwen3.5-35B-A3B |
-| Intent accuracy, 64 real English test messages | **84%** with the deployed INT4, 86% in float32 (56% before real training data) | CAMeLBERT 47%, Qwen zero-shot 89% |
-| Intent accuracy, 804 held-out real messages (dev set) | 93% INT4, 94% float32 | the model before real training data: 66% |
-| Intent accuracy, synthetic validation set (957) | 93% | CAMeLBERT 93% |
-| Valid JSON / reply in the customer's language, test | 98% / 97% INT4; 100% / 100% float32 | — |
-| CPU time per message, 4 threads | **0.12 s** for the answer, 0.25 s with the confidence (was 0.79 s and 0.97 s) | — |
-| Peak memory | **252 MB** (was 1,190 MB with PyTorch) | — |
+| Intent accuracy, 64 real English test messages | **86%** with the deployed INT4, 84% in float32 (56% before real training data) | CAMeLBERT 47%, Qwen zero-shot 89% |
+| Intent accuracy, 804 held-out real messages (dev set) | 94% INT4, 94% float32 | the model before real training data: 66% |
+| Intent accuracy, 1,298 held-out messages of the question types added in D-037 | 92% INT4, 92% float32 | the previous release: 65% |
+| Intent accuracy, synthetic validation set (957) | 94% | CAMeLBERT 93% |
+| Valid JSON / reply in the customer's language, test | 100% / 100%, INT4 and float32 | — |
+| CPU time per message, 4 threads | **0.11 s** for the answer, 0.24 s with the confidence (PyTorch without a cache: 0.73 s and 0.90 s) | — |
+| Peak memory | **251 MB** (1,294 MB with PyTorch) | — |
 
 The first model, trained only on teacher-written messages, fell from 93% on synthetic data to
 56% on real messages. Training on 2,921 real, openly licensed customer messages (D-033) raised it
 to 84%, close to the 35B teacher's 89%. Part of that gain is style the test messages share with
 the new training data, since both come from the same two public datasets.
 
+Trying the demo then showed two wrong answers: a refund status check and a question about
+sending money abroad. The training data had few status checks, how-to questions, conditions,
+costs, questions about other countries or off-topic requests. D-037 added 10,039 of them:
+- On 1,298 held-out messages of these types, accuracy rose from 65% to 92%. Those messages come
+  from the same datasets as a third of the new data, so this overstates the gain on new wording.
+- The test result held.
+- D-038 packaged this model as the new INT4 release. It goes live when the Hugging Face
+  repository is updated.
+
 Phase 7 made it deployable:
-- A KV cache and ONNX Runtime, then quantization, made it 6.7× faster per answer and 4.7× lighter
+- A KV cache and ONNX Runtime, then quantization, made it 6.5× faster per answer and 5× lighter
   in memory.
-- It runs as a FastAPI service, a Docker image and a Gradio demo.
+- It runs as a FastAPI service, a Docker image and an in-browser demo.
 
 What is still open:
 
 - **Gulf Arabic, Arabizi and mixed test messages.** Those parts of the test set need a native
   speaker, and they are the real check.
-- **Confidence.** At the chosen threshold, 88% of the answered test messages are right, short of
+- **Confidence.** At the chosen threshold, 90% of the answered test messages are right, short of
   the 95% bar.
-- **Garbled replies.** A few replies mix scripts, e.g. "…the lastدرءrestaurant…". That happened in 2 of
-  1,761 development replies, in float32 and INT4 alike, and in 2 of INT4's 64 test replies. A
-  guard in the service escalates them instead of sending them (D-035).
+- **Garbled replies.** Some replies mix scripts, mostly English replies to off-topic questions
+  with Arabic words inside. For the new INT4 that is 24 of 3,059 development replies and 1 of 64
+  test replies. On the same 1,761 development messages that is more than the previous release
+  (12 against 2); on the test set, less (1 against 2). A guard in the service escalates them
+  instead of sending them (D-035).
+- **Some questions are still misread, confidently enough to be answered**, e.g. "can i send
+  money by bank app to Bangladesh?" (balance_or_statement at 0.73, just above the 0.72
+  threshold).
 
 Next steps:
 
 1. Complete the Gulf Arabic, Arabizi and mixed parts of the human test set (needs a native
    speaker).
 2. Make the confidence trustworthy on real messages.
-3. Publish the model and the demo on Hugging Face.
+3. Fewer garbled replies: add a limit on them to the selection rule, or stop training earlier
+   (they rise over training; D-037).
 
 ## How it works
 
@@ -98,9 +114,9 @@ flowchart LR
 | 2. Data | done; the Arabic parts of the test set are open | 1.495B pretraining tokens; 18,547 SFT examples (20,572 after the Phase 5 clean-up and top-up, 24,263 with the real messages of D-033) |
 | 3. Model | done | Llama-style decoder, 62.1M parameters; passes the sanity checks |
 | 4. Pretraining | done | Validation loss 9.705 → 3.330 in 4 h 49 min; a second pass reached 3.232 |
-| 5. SFT | done; a second round added real messages (D-033), a third new question types (D-037, not deployed yet) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages; after D-037, 92.1% on 1,298 held-out messages of the new question types (D-033 model: 65.4%) |
+| 5. SFT | done; a second round added real messages (D-033), a third new question types (D-037, packaged by D-038) | Valid JSON 100%; intent accuracy 93.1% on the SFT validation split and 94.4% on 804 held-out real messages; after D-037, 92.1% on 1,298 held-out messages of the new question types (D-033 model: 65.4%) |
 | 6. Evaluation | English part done; the Arabic parts need a native speaker | On 64 real English messages: intent accuracy 84% after D-033 (56% before; CAMeLBERT 47%, Qwen 89%); valid JSON 100% |
-| 7. Quantization and deployment | done | INT4 ONNX, 78 MB: 0.12 s per answer on 4 CPU threads (6.7× faster), 84% on the English test; FastAPI, Docker, CI, Gradio demo |
+| 7. Quantization and deployment | done; redone for the D-037 model (D-038) | INT4 ONNX, 78 MB: 0.11 s per answer on 4 CPU threads (6.5× faster), 86% on the English test; FastAPI, Docker, CI, in-browser demo |
 | 8. Presentation | done; publishing on Hugging Face is the owner's step | Architecture diagrams, a [model card](docs/MODEL_CARD.md), the Hugging Face model folder and Space, built and checked locally |
 
 Results by phase:
@@ -166,18 +182,20 @@ Results by phase:
   rarely seen status checks, how-to questions, costs, conditions, other countries and off-topic
   requests. This round added 10,039 examples of them, with every rule fixed before any data was
   made ([results](docs/results/phase5c_qtypes.md)).
-  - Sources: English Bitext and MASSIVE messages, and a Qwen grid of Gulf Arabic, Arabizi and
-    mixed messages. Qwen wrote every reply under a stricter rule: refer only to what the
-    customer wrote.
+  - Sources: English Bitext messages, English and Saudi Arabic MASSIVE messages, and a Qwen grid
+    of Gulf Arabic, Arabizi and mixed messages. Qwen wrote every reply under a stricter rule:
+    refer only to what the customer wrote.
   - On 1,298 held-out messages of the new question types: 92.1%, against 65.4% for the D-033
     model. They come from the same datasets as a third of the new data, so this overstates the
     gain on new wording.
   - Qwen judged 86.3% of 300 development replies good, against 79.0% (McNemar p = 0.012).
     Most of the gain is replies that answer the question.
   - Real dev set 93.8% (D-033: 94.4%, p = 0.53). Test set 84.4%, unchanged.
+  - Better: the owner's refund-status message now gets a status-check reply instead of an
+    invented "damaged product".
   - Worse: more English replies with stray Arabic letters (28 of 2,012 development replies,
     against 10). The owner's "send money to Bangladesh" message is still wrong, now with high
-    confidence. This model is not deployed yet.
+    confidence. D-038 packaged this model for deployment (below).
 - **Evaluation (Phase 6, English part):** the 64 human test messages, scored once per model with
   the same protocol.
 
@@ -217,6 +235,17 @@ Results by phase:
     did not weigh that.
   - **Serving:** a torch-free FastAPI service, a Docker image, a Gradio demo for Hugging Face
     Spaces, and GitHub Actions CI with a smoke evaluation.
+- **Deploying the question-type model (Phase 7c, D-038):** the same procedure, with the
+  question-type dev set as a third development set in the rule
+  ([results](docs/results/phase7c_deploy.md)).
+  - ONNX float32 and the KV-cache path give answers identical to PyTorch on all 3,059
+    development messages.
+  - INT8 and INT4 both stay within 1 point on all three sets, so the rule deploys INT4 (78 MB)
+    again.
+  - **Test set, once per system:** float32 84.4%, INT8 82.8%, INT4 85.9%. INT4 and float32
+    give a different intent on 5 of the 64 messages. Qwen judged 87.5% of INT4's replies good,
+    the same as unquantized.
+  - Speed is unchanged: 0.112 s per answer and 0.245 s with the confidence (4 threads), 251 MB.
 
 Open: **the Arabic, Arabizi and mixed parts of the human test set** need a native Gulf Arabic
 speaker (see [Test data](#test-data)).
@@ -450,14 +479,19 @@ timings. No system setting is changed.
 | `uv run python scripts/phase7_report.py --config configs/deploy/phase7.yaml` | Results page | seconds |
 | `uv run python scripts/ci_smoke.py` | The CI check: a tiny model through export, INT8/INT4, evaluation and the predictor | ~1 min |
 
+Phase 7c (D-038) runs the same scripts with `--config configs/deploy/phase7c.yaml` (and
+`configs/deploy/phase7c_judge.yaml` for the judge). The variants go to `artifacts/deploy-5c/`;
+the dev step takes ~60 min, because every system also runs the 1,298-message question-type dev
+set.
+
 Serving, without PyTorch:
 
 ```bash
-DANALM_MODEL_DIR=artifacts/deploy/int4 uv run uvicorn danalm.serve.app:app --port 8000
+DANALM_MODEL_DIR=artifacts/deploy-5c/int4 uv run uvicorn danalm.serve.app:app --port 8000
 curl -s localhost:8000/predict -H "content-type: application/json" -d '{"message": "my card got stuck in the ATM"}'
 docker build -t danalm-serve .
-docker run --rm -p 8000:8000 -v "$PWD/artifacts/deploy/int4:/model:ro" danalm-serve
-uv run --group demo python scripts/build_space.py --config configs/deploy/phase7.yaml
+docker run --rm -p 8000:8000 -v "$PWD/artifacts/deploy-5c/int4:/model:ro" danalm-serve
+uv run --group demo python scripts/build_space.py --config configs/deploy/phase7c.yaml
 ```
 
 **Model on Hugging Face:** [Mazharrony/danalm](https://huggingface.co/Mazharrony/danalm), with the
@@ -465,9 +499,11 @@ model card and the INT4, INT8 and fp32 graphs.
 
 **In-browser demo (D-036):** `web/` is a static page. It downloads the INT4 model once and runs it
 with ONNX Runtime Web, so nothing typed leaves the browser. `web/danalm.js` ports the Python
-inference path; `web/parity.html` compares it with Python:
-- the text processing is identical on 314 of 314 inputs;
-- the intents are identical on 60 of 60 predictions.
+inference path; `web/parity.html` compares it with Python. For the model deployed by D-038:
+- the text processing is identical on 464 of 464 inputs;
+- the intents and routes are identical on 60 of 60 predictions, and the generated tokens on 54
+  of them. In the other 6, a near tie between two tokens goes the other way (the WebAssembly and
+  native kernels round differently), and the reply continues differently from there.
 
 To try it locally, serve the repository root with any static file server and open
 `/web/index.html`.

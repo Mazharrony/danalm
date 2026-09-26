@@ -1415,8 +1415,11 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       (about 3,500 of 9,923) and replies that claimed an action (424).
     - Amendment 2 worked for mixed: 3.8 kept examples per request in the top-up against 2.4 in
       the main grid. Arabizi barely changed (3.9 against 3.7).
-    - The reply check marked 430 of 12,412 replies broken; 385 of them had passed the label
-      judge and were dropped. It caught 2 of its 8 planted broken replies, so it misses many.
+    - The reply check gave a verdict on 12,349 of the 12,412 replies and marked 430 broken; 385
+      of them had passed the label judge and were dropped. It caught 2 of its 8 planted broken
+      replies, so it misses many.
+    - 63 replies got no verdict, because the judge's answer could not be parsed. Assembly kept
+      them as not broken, so 45 training examples in final-v5 had no reply check.
     - 21 near copies of test or dev messages were dropped.
   - **Selection:** second pass, lr 1e-3, epoch 4.
     - 4 of the 20 checkpoints passed both guards, all within 1 point on the question-type dev
@@ -1435,11 +1438,13 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     (amendment 1), so these count as errors:
     - sim_or_number: 0 of 45. They are Bitext's activate_phone, deactivate_phone and
       change_provider. The label judge agreed with none of the 86 training candidates with these
-      labels (70 plan_change, 16 other), so none was trained. The model says plan_change (30) or
-      other (10). Without them: 95.5% (1,196/1,253; D-033: 67.4%).
-    - order_status from MASSIVE's takeaway_query: 59 of 80. The judge agreed with 85 of 192
-      training candidates and called 106 other. The model says other for 21 dev messages, such
-      as "does this restaurant deliver".
+      labels (70 plan_change, 16 other), so none was trained. The model says plan_change (30),
+      other (10) or a card or delivery intent (5). Without them: 95.5% (1,196/1,253; D-033:
+      67.4%).
+    - order_status from MASSIVE's takeaway_query: 14 of 35 right. The whole intent scores 59 of
+      80, because its 45 Bitext messages are all right. The judge agreed with 85 of 192 training
+      candidates and called 106 other. The model says other for the remaining 21, such as "does
+      this restaurant deliver".
   - **Reply faithfulness** (the D-032 judge; the same 300 development messages, both models):
 
     | | D-033 model | Chosen model | Good only for the new / only for the old | Exact McNemar p |
@@ -1469,21 +1474,29 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
       tokens.
   - **Script mixing got worse.** English development replies with Arabic letters: 28 of 2,012
     for the chosen model, 10 for the D-033 model (p = 0.004).
-    - In every run the count rises with the epoch: 1–8 after epoch 1, 25–39 after epoch 5.
+    - In every run the count climbs from epoch 3 on: 1–8 after epoch 1, 25–39 after epoch 5.
+      Two runs dip from epoch 1 to epoch 2.
     - The guard escalates these replies, so they are not sent, but the customer waits for a
       person.
-  - **The owner's two messages** (not a measurement: PyTorch in float32, greedy decoding):
-    - Amazon refund: no invented damage any more. "I understand you need to know about your
-      refund request. Please share the details so I can pass this to the team for review."
-    - The D-033 model in Python did not invent it either. The demo's reply came from INT4 in the
-      browser, whose answers differ from Python's on 7 of 60 development messages (D-036).
+  - **The owner's two messages** (not a measurement: float32, greedy decoding):
+    - Correction, found by a fact check before D-038 was committed: the first version of this
+      check sent the Amazon message with an extra word ("…received that answer"). "answer" was
+      the owner's label for the demo's reply, not part of the message. The lines below use the
+      exact message.
+    - Amazon refund: **fixed.** The chosen model reads it as a status check: "Please visit our
+      website or app to check the status of your refund request. Your request will be passed to
+      our team for further assistance." (refund_request, 1.00).
+    - The D-033 model invents the damage in Python as well: "I am sorry you received a damaged
+      product…". So the demo's reply came from the model, not from the browser runtime.
     - Bangladesh: **still wrong, and now confident.** It says balance_or_statement at 0.81,
       above the threshold, so the reply would be sent. It is meaningless ("You can find your
       current bank app by checking your statement…"). The D-033 model said transfer_issue at
       0.34 and escalated.
     - Of 6 more messages written for this check (none from the test set), the how-to and
-      off-topic ones improved. "can I use my debit card in London?" went from card_not_working
-      to loans_and_credit (0.85).
+      off-topic ones improved.
+    - "can I use my debit card in London? will it work there" went from card_not_working to
+      loans_and_credit (0.85). Without its second sentence, the confidence is 0.67, below the
+      threshold, so it would be escalated.
   - **Other known issues:**
     - 32 of the 3,191 new English replies (1.0%) still say an action is done ("we have
       forwarded…"). In final-v4 it was 1.7%. No Arabic reply in final-v5 claims a finished
@@ -1536,3 +1549,59 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
   - a few minutes per ONNX variant;
   - about 15 min of latency runs;
   - a few minutes for the test and the judge.
+- **Result (2026-09-26; [results/phase7c_deploy.md](results/phase7c_deploy.md)):**
+  - **Export:** identical greedy answers on 32 of 32 messages; largest logit difference 1.3e-5.
+    ONNX float32 and the PyTorch KV-cache path gave the same answer as the reference on all
+    3,059 development messages.
+  - **Development sets** (intent accuracy):
+
+    | System | SFT validation (957) | Real dev (804) | Question-type dev (1,298) | ONNX file |
+    |---|---:|---:|---:|---:|
+    | PyTorch float32 = ONNX float32 | 94.0% | 93.5% | 92.1% | 278 MB (the PyTorch checkpoint: 237 MB) |
+    | INT8 | 93.8% | 93.9% | 91.7% | 101 MB |
+    | **INT4** | 93.8% | 93.8% | 91.8% | **78 MB** |
+
+    - Both quantized variants pass on every set. The largest drop is INT8's 6 of 1,298
+      question-type messages; the limit was 12.98.
+    - **Deployed: INT4**, the smallest passing variant, with threshold 0.720. No fallback was
+      needed.
+    - The reference in float32 on the CPU scores 93.5% on the real dev set. D-037 measured
+      93.8% in bf16 on the GPU for the same checkpoint. The net difference, 2 of 804 messages,
+      comes from bf16 against float32 rounding.
+  - **Test (English part, once per system, after the choice was committed in 43a2b76):**
+    - PyTorch float32 84.4% (54/64) and ONNX float32 84.4% (identical answers), INT8 82.8%,
+      **INT4 85.9%** (55/64, macro-F1 87.0%).
+    - INT4 gives a different intent from float32 on 5 messages, so its extra correct answer is
+      noise.
+    - The previous deployment (D-033's INT4) scored 84.4%.
+    - Qwen judged 87.5% (56/64) of INT4's replies good, the same as the unquantized model in
+      D-037. The one broken answer is t0013, English with an Arabic word, which the guard
+      escalates.
+    - Coverage at the dev threshold: the confidence clears it for 90.6% of the messages, and
+      89.7% of those are right. After the reply guard, 89.1% (57/64) are answered on the device,
+      and 91.2% of those are right. **The coverage bar is still missed.**
+  - **Reply guard** (INT4): it rejects 6 of 957, 6 of 804 and 12 of 1,298 development replies,
+    and 1 of 64 test replies.
+    - They are mostly English replies to off-topic questions with Arabic words inside, plus a
+      few Arabic replies to English messages.
+    - Accuracy on what is still answered on the device moves by less than 0.05 points on two
+      sets and rises on the others.
+  - **Latency** (4 threads, D-034's 100 messages; Phase 7's numbers in brackets):
+    - INT4: 0.112 s per answer (0.118) and 0.245 s with the confidence (0.251); 251 MB (252).
+    - INT8: 0.129 s and 0.190 s.
+    - PyTorch float32 without the cache: 0.730 s and 0.898 s.
+  - **Browser parity** (the deployed INT4, 464 texts and 60 predictions on development
+    messages):
+    - The text processing is identical on all 464.
+    - Intents and routes are identical on 60 of 60, and the generated tokens on 54. The largest
+      confidence difference is 0.012.
+    - The browser takes 2.3 s per prediction (4 threads, cross-origin isolated).
+  - **The owner's two messages, through the new INT4 predictor** (the exact text; see the
+    correction in D-037):
+    - Amazon refund: refund_request at 1.00, a status-check reply: "Please check your order
+      details in the app or on our website for the latest status. We will forward your request
+      to the team for further assistance."
+    - Bangladesh: balance_or_statement at 0.73, just above the 0.720 threshold, so it is
+      answered, wrongly. This stays a known issue (D-037).
+  - **Hand-over:** the Hugging Face folder is rebuilt from `artifacts/deploy-5c` with the updated
+    model card. The upload is the owner's step, and the demo follows it.

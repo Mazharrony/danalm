@@ -39,8 +39,8 @@ costs, questions about other countries or off-topic requests. D-037 added 10,039
 - On 1,298 held-out messages of these types, accuracy rose from 65% to 92%. Those messages come
   from the same datasets as a third of the new data, so this overstates the gain on new wording.
 - The test result held.
-- D-038 packaged this model as the new INT4 release. It goes live when the Hugging Face
-  repository is updated.
+- D-038 released it as INT4. It is live on [Hugging Face](https://huggingface.co/Mazharrony/danalm)
+  and in the [in-browser demo](https://huggingface.co/spaces/Mazharrony/danalm-demo).
 
 Phase 7 made it deployable:
 - A KV cache and ONNX Runtime, then quantization, made it 6.5× faster per answer and 5× lighter
@@ -497,7 +497,8 @@ uv run --group demo python scripts/build_space.py --config configs/deploy/phase7
 **Model on Hugging Face:** [Mazharrony/danalm](https://huggingface.co/Mazharrony/danalm), with the
 model card and the INT4, INT8 and fp32 graphs.
 
-**In-browser demo (D-036):** `web/` is a static page. It downloads the INT4 model once and runs it
+**In-browser demo (D-036):** [Mazharrony/danalm-demo](https://huggingface.co/spaces/Mazharrony/danalm-demo).
+`web/` is a static page. It downloads the INT4 model once and runs it
 with ONNX Runtime Web, so nothing typed leaves the browser. `web/danalm.js` ports the Python
 inference path; `web/parity.html` compares it with Python. For the model deployed by D-038:
 - the text processing is identical on 464 of 464 inputs;

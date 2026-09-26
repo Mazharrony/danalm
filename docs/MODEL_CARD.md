@@ -197,7 +197,8 @@ predictor.predict("وين طلبي؟ صار له ساعتين وما وصل")
 #  'valid_json': True, 'reply_fits': True, 'message_masked': '...', 'latency_ms': ...}
 ```
 
-The repository also has a FastAPI service (`POST /predict`), a Dockerfile and a Gradio demo.
+The repository also has a FastAPI service (`POST /predict`) and a Dockerfile. An in-browser demo
+runs this INT4 model with ONNX Runtime Web: https://huggingface.co/spaces/Mazharrony/danalm-demo
 
 ## Training compute
 

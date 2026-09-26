@@ -100,11 +100,15 @@ const BASE = params.get("model") || "https://huggingface.co/Mazharrony/danalm/re
 const $ = (id) => document.getElementById(id);
 const status = (s) => ($("status").textContent = s);
 
-async function fetchCached(url, onProgress) {
-  // the model is fetched once, then served from the browser's cache
+async function fetchCached(url, sha256, onProgress) {
+  // the model is fetched once, then served from the browser's cache. The cache key carries the
+  // model's SHA-256 from danalm.json, so a newly uploaded model replaces the cached one instead of
+  // being paired with the old weights.
   let cache = null;
   try { cache = await caches.open("danalm-v1"); } catch { /* no Cache API: fetch every time */ }
-  const hit = cache && (await cache.match(url));
+  const plain = new URL(url, location.href).href;
+  const key = sha256 ? `${plain}?sha256=${sha256}` : plain;
+  const hit = cache && (await cache.match(key));
   if (hit) return hit.arrayBuffer();
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${url}: HTTP ${res.status}`);
@@ -122,7 +126,14 @@ async function fetchCached(url, onProgress) {
   const buf = new Uint8Array(got);
   let at = 0;
   for (const c of chunks) { buf.set(c, at); at += c.length; }
-  if (cache) { try { await cache.put(url, new Response(buf)); } catch { /* quota: fine */ } }
+  if (cache) {
+    try {
+      for (const old of await cache.keys()) {  // an earlier model: free its space
+        if (old.url.startsWith(plain) && old.url !== key) await cache.delete(old);
+      }
+      await cache.put(key, new Response(buf));
+    } catch { /* quota: fine */ }
+  }
   return buf.buffer;
 }
 
@@ -131,7 +142,7 @@ try {
   const t0 = performance.now();
   const [tokenizer, meta] = await Promise.all(["tokenizer.json", "danalm.json"].map(
     async (f) => (await fetch(BASE + f)).json()));
-  const model = await fetchCached(BASE + "model.onnx", (got, total) =>
+  const model = await fetchCached(BASE + "model.onnx", meta.model_sha256, (got, total) =>
     status(`Downloading the model: ${(got / 2 ** 20).toFixed(0)}` + (total ? ` of ${(total / 2 ** 20).toFixed(0)} MB` : " MB")));
   status("Starting the model…");
   predictor = await Predictor.create(ort, { model, tokenizer, meta });

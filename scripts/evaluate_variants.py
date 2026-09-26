@@ -100,8 +100,9 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     deploy = Path(cfg["deploy"]["out_dir"])
     split = p["split"]
-    if split == "dev":
-        sets = {name: read_jsonl(path) for name, path in p["dev_sets"].items()}
+    if split == "dev":  # a set may be one file or a list of files
+        sets = {name: [r for f in ([path] if isinstance(path, str) else path) for r in read_jsonl(f)]
+                for name, path in p["dev_sets"].items()}  # fmt: skip
     elif split == "test":
         if not Path(p["selected"]).exists():
             raise SystemExit("choose the variant on the development sets first (D-034)")

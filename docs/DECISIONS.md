@@ -1494,3 +1494,45 @@ considered, and when to revisit it. Newest at the bottom. The project plan is in
     requests); GPU steps 21:58–23:29.
   - **Not deployed yet:** the model in `artifacts/deploy`, the Hugging Face folder and the demo is
     still D-033's INT4.
+
+## D-038 · Phase 7c · Deploying the D-037 model with the D-034 procedure
+
+- **Decision:** the owner said "go" on 2026-09-26 to deploy the D-037 model
+  (`sft-selected-5c.json`). D-034 applies unchanged: the same variants and fallback, the same
+  rule, choice, latency protocol and test protocol. The differences below are fixed before any
+  result.
+- **A third development set in the rule: the question-type dev set** (1,298, from Bitext and
+  MASSIVE).
+  - The D-037 model was chosen for it. So a quantized variant must also stay within 1.0 point
+    of `onnx-fp32` there, with valid JSON and reply language of at least 99%.
+  - The exactness check (at least 99.5% of answers the same as the reference) covers it too.
+- **The latency sample stays D-034's:** 50 SFT-validation and 50 real-dev messages (seed 42), so
+  the numbers compare with Phase 7.
+- **Paths** (`configs/deploy/phase7c.yaml`):
+  - the variants go to `artifacts/deploy-5c`;
+  - the results go to `artifacts/eval/phase7c` and `docs/results/phase7c_deploy.md`;
+  - the D-033 deployment in `artifacts/deploy` is not touched.
+- **The reply guard (D-035) is part of the predictor from the start.** The page reports what it
+  rejects per system and set, as in Phase 7.
+- **Test:** after the choice is committed, the English test set is scored once per variant and
+  once for PyTorch float32 on the CPU.
+  - Qwen judges the deployed variant's replies.
+  - Nothing is chosen from the test set.
+- **Hand-over:**
+  - The Hugging Face folder (`artifacts/hf-model`) is rebuilt, with the deployed variant first
+    and an updated model card.
+  - The browser parity check runs again on the deployed variant.
+  - Uploading stays the owner's step. The demo loads the model from the Hugging Face
+    repository, so it follows the upload.
+- **Two tooling fixes, found while preparing this:**
+  - The demo cached the model file by its URL. After an upload, a returning visitor would have
+    paired the new `danalm.json` with the old weights. The cache key is now the model's SHA-256
+    from `danalm.json`, and the old entry is deleted.
+  - The results page, the latency sample and the browser parity page no longer assume the D-033
+    model and two dev sets. Regenerated from the Phase 7 files, the Phase 7 page is unchanged
+    except for its date.
+- **Time:**
+  - about 35 min for the PyTorch reference on the three sets;
+  - a few minutes per ONNX variant;
+  - about 15 min of latency runs;
+  - a few minutes for the test and the judge.

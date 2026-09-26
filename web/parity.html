@@ -26,7 +26,7 @@ const bad = [];
 const note = (kind, input, got, want) => bad.push([kind, input, got, want]);
 try {
   const cases = await (await fetch("../artifacts/web-parity/cases.json")).json();
-  const base = `../artifacts/deploy/${cases.variant}/`;
+  const base = cases.model_dir ? `../${cases.model_dir}/` : `../artifacts/deploy/${cases.variant}/`;
   const tokJson = await (await fetch(base + "tokenizer.json")).json();
   const meta = await (await fetch(base + "danalm.json")).json();
   const tok = new Tokenizer(tokJson);

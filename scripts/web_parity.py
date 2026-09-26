@@ -44,8 +44,10 @@ def main() -> None:
     rng = random.Random(w["seed"])
     messages = []
     for path in cfg["phase7"]["dev_sets"].values():
-        with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh]
+        rows = []
+        for f in [path] if isinstance(path, str) else path:  # one file or a list of files
+            with open(f, encoding="utf-8") as fh:
+                rows += [json.loads(line) for line in fh]
         messages += [r["message"] for r in rng.sample(rows, w["per_set"])]
     model_dir = Path(cfg["deploy"]["out_dir"]) / w["variant"]
     tok = Tokenizer.from_file(str(model_dir / "tokenizer.json"))
@@ -66,7 +68,9 @@ def main() -> None:
         predictions.append({"message": text, "generated_ids": ids, **out})
     out_path = Path(w["out"])
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps({"variant": w["variant"], "texts": texts, "predictions": predictions},
+    # model_dir: where web/parity.html loads the same model from (relative to the repository root)
+    out_path.write_text(json.dumps({"variant": w["variant"], "model_dir": model_dir.as_posix(),
+                                    "texts": texts, "predictions": predictions},
                                    ensure_ascii=False), encoding="utf-8")  # fmt: skip
     print(f"{out_path}: {len(texts)} texts, {len(predictions)} predictions")
 

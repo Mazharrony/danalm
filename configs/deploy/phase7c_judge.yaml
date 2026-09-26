@@ -1,0 +1,8 @@
+# Phase 7c (D-038): Qwen judges the deployed variant's test replies with the D-032 prompt.
+# Run after scripts/evaluate_variants.py --config configs/deploy/phase7c.yaml phase7.split=test:
+#   uv run python scripts/evaluate_teacher.py --config configs/deploy/phase7c_judge.yaml
+base: phase7_judge.yaml
+run_name: phase7c-judge
+
+phase6:
+  out_dir: ${paths.artifacts_dir}/eval/phase7c-judge

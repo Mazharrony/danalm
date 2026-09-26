@@ -54,7 +54,17 @@ def broken(path: Path, cfg: dict[str, Any]) -> list[dict[str, Any]]:
     return [x for x in read_jsonl(path) if not x["valid"] or not fits(x, cfg)]
 
 
-def guard_section(cfg: dict[str, Any], out: Path, dev: dict[str, Any], test: bool) -> list[str]:
+GUARD_NOTE = (
+    "Added after the test run: the predictor escalates a reply that does not fit the customer's "
+    "language. Applied here to the saved predictions; no model was re-run. The development sets "
+    "give the false-alarm check; the test rows are not an independent estimate, because the "
+    "test set revealed the problem."
+)
+
+
+def guard_section(
+    cfg: dict[str, Any], out: Path, dev: dict[str, Any], test: bool, note: str
+) -> list[str]:
     """D-035: what the reply guard escalates, on the saved predictions of every system."""
     runs = [("dev", k) for k in cfg["phase7"]["dev_sets"]] + ([("test", "test")] if test else [])
     rows, flagged = [], []
@@ -77,10 +87,7 @@ def guard_section(cfg: dict[str, Any], out: Path, dev: dict[str, Any], test: boo
     return [
         "## Reply guard (D-035)",
         "",
-        "Added after the test run: the predictor escalates a reply that does not fit the customer's "
-        "language. Applied here to the saved predictions; no model was re-run. The development sets "
-        "give the false-alarm check; the test rows are not an independent estimate, because the "
-        "test set revealed the problem.",
+        note,
         "",
         "| Set | System | Replies rejected | Answered on the device, before → after | Their intent accuracy |",
         "|---|---|---:|---:|---:|",
@@ -110,17 +117,22 @@ def main() -> None:
     sel = dev["selected"]
     systems = list(dev["metrics"])
     sets = list(p["dev_sets"])
+    # the page's wording; the defaults are the D-033 deployment's (D-034), a later one overrides them
+    rep = p.get("report", {})
     names = {
         "sft_val": "SFT validation (957, all varieties)",
         "real_dev": "real dev set (804, English)",
-    }
+        "qtype_dev": "question-type dev set (1,298, English and Saudi Arabic)",
+    } | rep.get("set_names", {})
+    all_sets = "both sets" if len(sets) == 2 else f"all {len(sets)} development sets"
 
     lines = [
-        "# Phase 7 results: quantization and deployment",
+        f"# {rep.get('title', 'Phase 7 results: quantization and deployment')}",
         "",
         f"Generated on {date.today().isoformat()} by `scripts/phase7_report.py`; do not edit by hand. "
-        "Rules: D-034 in [DECISIONS.md](../DECISIONS.md), fixed before any quantized model was scored. "
-        f"The model is the D-033 model (`{dev['checkpoint'].replace(chr(92), '/')}`).",
+        "Rules: " + rep.get("rules", "D-034 in [DECISIONS.md](../DECISIONS.md), fixed before any "
+                            "quantized model was scored") + ". "
+        f"The model is {rep.get('model', 'the D-033 model')} (`{dev['checkpoint'].replace(chr(92), '/')}`).",
         "",
         "## Export and variants",
         "",
@@ -158,9 +170,9 @@ def main() -> None:
         "The reference is PyTorch float32 on the CPU, recomputing the whole sequence at every step "
         "(the D-029 decoding).",
         "",
-        f"- Exactness (same answer as the reference on at least {pct(rule['min_same_answer'])} of both sets): "
+        f"- Exactness (same answer as the reference on at least {pct(rule['min_same_answer'])} of {all_sets}): "
         + "; ".join(f"{s}: **{'met' if ok else 'missed'}**" for s, ok in sel["exactness_ok"].items()) + ".",
-        f"- The D-034 rule for a quantized variant, on both sets: intent accuracy at most "
+        f"- The D-034 rule for a quantized variant, on {all_sets}: intent accuracy at most "
         f"{100 * rule['max_accuracy_drop']:.0f} point below onnx-fp32, valid JSON ≥ {pct(rule['min_valid_json'])}, "
         f"reply language ≥ {pct(rule['min_reply_lang'])}.",
         *(f"  - {v}: **{'passes' if v in sel['passing'] else 'fails'}**. Intent accuracy against onnx-fp32: "
@@ -178,11 +190,14 @@ def main() -> None:
             for k in next(v for k, v in lat.items() if isinstance(v, dict))
             if k.startswith("threads_")
         ]
+        lat_sets = lat.get("sets") or sets
+        source = ("each development set" if len(lat_sets) == len(sets) else
+                  "each of " + " and ".join(names.get(k, k).split(" (")[0] for k in lat_sets))  # fmt: skip
         lines += [
             "## Latency and memory",
             "",
-            f"Batch 1 on the CPU ({lat['cpu']}), {lat['messages_per_set']} messages from each development "
-            f"set (seed {lat['seed']}), after warm-up; each system in its own process, with Windows power "
+            f"Batch 1 on the CPU ({lat['cpu']}), {lat['messages_per_set']} messages from {source} "
+            f"(seed {lat['seed']}), after warm-up; each system in its own process, with Windows power "
             "throttling turned off for that process (D-034). \"With confidence\" adds the 21-intent "
             "scores that decide the route; it is timed on its own.",
             "",
@@ -205,8 +220,9 @@ def main() -> None:
             "## Human test set: accuracy before and after quantization",
             "",
             f"The English part (64 messages, SHA-256 `{test['test_sha256'][:12]}…`), scored once per "
-            "system after the choice was committed (D-034). The test messages come from the test "
-            "splits of the datasets whose train splits D-033 trained on (see its caveat).",
+            "system after the choice was committed (D-034). "
+            + rep.get("test_note", "The test messages come from the test splits of the datasets whose "
+                                   "train splits D-033 trained on (see its caveat)."),
             "",
             "| System | Intent accuracy (95% interval) | Macro-F1 | Valid JSON | Reply language | Same intent as PyTorch float32 | Answered at the dev threshold (accuracy) |",
             "|---|---|---:|---:|---:|---:|---|",
@@ -216,7 +232,8 @@ def main() -> None:
               + f"{pct(test['coverage_at_dev_threshold'][s]['test']['coverage'])} "
               + f"({pct(test['coverage_at_dev_threshold'][s]['test']['accuracy'])}) |" for s in tm),
             "",
-            "Phase 6b scored the same model in bf16 on the GPU: 84.4% ([phase6b_eval.md](phase6b_eval.md)).",
+            rep.get("gpu_reference", "Phase 6b scored the same model in bf16 on the GPU: 84.4% "
+                                     "([phase6b_eval.md](phase6b_eval.md))."),
             "",
         ]  # fmt: skip
         judge_path = Path(p["judge_dir"]) / "reply_judge.jsonl"
@@ -228,14 +245,14 @@ def main() -> None:
                 "prompt: " + ", ".join(f"{q.replace('_', ' ')} {rate(sum(j[q] is True for j in judged), len(judged))}"
                                         for q in ("answers", "polite_clear", "language", "safe"))
                 + f". **All four yes: {rate(sum(j['good'] for j in judged), len(judged))}.** "
-                "Phase 6b, the same model unquantized: 92.2% (59/64).",
+                + rep.get("judge_reference", "Phase 6b, the same model unquantized: 92.2% (59/64)."),
                 "",
                 "Broken answers of the deployed variant on the test set: "
                 + "; ".join(f"{x['id']} ({'invalid JSON' if not x['valid'] else 'reply: ' + repr(x['reply'][:70])})"
                             for x in broken(out / f"test_test_onnx-{sel['variant']}.jsonl", cfg)) + ".",
                 "",
             ]  # fmt: skip
-    lines += guard_section(cfg, out, dev, bool(test))
+    lines += guard_section(cfg, out, dev, bool(test), rep.get("guard_note", GUARD_NOTE))
     Path(p["results_md"]).write_text(
         "\n".join(lines).rstrip() + "\n", encoding="utf-8", newline="\n"
     )

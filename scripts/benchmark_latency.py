@@ -2,7 +2,8 @@
 
 Usage: uv run python scripts/benchmark_latency.py --config configs/deploy/phase7.yaml
 Messages: a seeded sample of development messages (latency.per_set from each set in
-phase7.dev_sets; never the test set), after latency.warmup warm-up messages. Systems:
+phase7.dev_sets, or only the sets named in latency.sets; never the test set), after
+latency.warmup warm-up messages. Systems:
 - pytorch-fp32: PyTorch float32 without the cache (the setting of D-032);
 - pytorch-fp32-cache: the same model with the KV cache;
 - onnx-<variant>: the ONNX variants through danalm.infer.predictor.
@@ -35,9 +36,12 @@ from danalm.config import config_from_cli, load_config
 def sample_messages(p: dict[str, Any], lat: dict[str, Any]) -> list[str]:
     rng = random.Random(lat["seed"])
     out = []
-    for path in p["dev_sets"].values():
-        with open(path, encoding="utf-8") as fh:
-            rows = [json.loads(line) for line in fh]
+    names = lat.get("sets") or list(p["dev_sets"])
+    for path in (p["dev_sets"][k] for k in names):
+        rows = []
+        for f in [path] if isinstance(path, str) else path:  # one file or a list of files
+            with open(f, encoding="utf-8") as fh:
+                rows += [json.loads(line) for line in fh]
         out += [r["message"] for r in rng.sample(rows, lat["per_set"])]
     return out
 
@@ -159,7 +163,8 @@ def main() -> None:
     config_path = sys.argv[sys.argv.index("--config") + 1]
     systems = ["pytorch-fp32", "pytorch-fp32-cache"] + [f"onnx-{v}" for v in p["variants"]]
     results: dict[str, Any] = {"cpu": platform.processor() or platform.machine(),
-                               "messages_per_set": lat["per_set"], "seed": lat["seed"]}  # fmt: skip
+                               "messages_per_set": lat["per_set"], "seed": lat["seed"],
+                               "sets": lat.get("sets") or list(p["dev_sets"])}  # fmt: skip
     for system in systems:
         results[system] = {}
         for threads in lat["threads"]:

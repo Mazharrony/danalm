@@ -1,0 +1,51 @@
+# Phase 7c (D-038): the D-037 model through the D-034 procedure, with the question-type dev set
+# as a third development set. The D-033 deployment in artifacts/deploy is left as it is.
+#   uv run python scripts/export_onnx.py        --config configs/deploy/phase7c.yaml   # float32 + parity check
+#   uv run python scripts/quantize_onnx.py      --config configs/deploy/phase7c.yaml
+#   uv run python scripts/evaluate_variants.py  --config configs/deploy/phase7c.yaml                   # dev + choice
+#   uv run python scripts/benchmark_latency.py  --config configs/deploy/phase7c.yaml
+#   uv run python scripts/evaluate_variants.py  --config configs/deploy/phase7c.yaml phase7.split=test # after the choice is committed
+#   uv run python scripts/evaluate_teacher.py   --config configs/deploy/phase7c_judge.yaml
+#   uv run python scripts/phase7_report.py      --config configs/deploy/phase7c.yaml
+#   uv run python scripts/build_hf_model.py     --config configs/deploy/phase7c.yaml   # after the model card is updated
+#   uv run python scripts/web_parity.py         --config configs/deploy/phase7c.yaml   # then web/parity.html
+base: phase7.yaml
+run_name: phase7c-eval
+
+deploy:
+  selected: ${paths.artifacts_dir}/checkpoints/sft-selected-5c.json   # the D-037 model
+  out_dir: ${paths.artifacts_dir}/deploy-5c
+
+phase7:
+  out_dir: ${paths.artifacts_dir}/eval/phase7c
+  dev_sets:                    # never the test set
+    sft_val: ${paths.data_dir}/sft/final-v5/val.jsonl     # 957, all varieties (the same file as final-v4's)
+    real_dev: ${paths.data_dir}/sft/sft-real/dev.jsonl    # 804, English
+    qtype_dev:                                            # 1,298, English and Saudi Arabic (D-037)
+      - ${paths.data_dir}/sft/sft-qtypes-bitext/dev.jsonl
+      - ${paths.data_dir}/sft/sft-qtypes-massive/dev.jsonl
+  latency_results: ${paths.artifacts_dir}/eval/phase7c/latency.json
+  selected: ${paths.artifacts_dir}/deploy-5c/selected.json
+  judge_dir: ${paths.artifacts_dir}/eval/phase7c-judge
+  results_md: docs/results/phase7c_deploy.md
+  report:                      # the results page's wording (scripts/phase7_report.py)
+    title: "Phase 7c results: deploying the question-type model (D-038)"
+    rules: "D-034, applied again by D-038 in [DECISIONS.md](../DECISIONS.md), both fixed before any quantized model was scored"
+    model: "the D-037 model"
+    test_note: >-
+      The test messages come from the test splits of the datasets whose train splits D-033 and
+      D-037 trained on (see their caveats).
+    gpu_reference: "Phase 6c scored the same model in bf16 on the GPU: 84.4% ([phase6c_eval.md](phase6c_eval.md))."
+    judge_reference: "Phase 6c, the same model unquantized: 87.5% (56/64)."
+    guard_note: >-
+      The predictor escalates a reply that does not fit the customer's language (D-035), so it
+      was in place before this model was scored. Applied here to the saved predictions; no model
+      was re-run. Most rejections are English replies with Arabic letters, which D-037 found more
+      often in this model. The test rows are still not a clean estimate: the guard was designed
+      after the D-033 model's test run.
+
+latency:
+  sets: [sft_val, real_dev]    # the D-034 sample of 100 messages, so the numbers compare with Phase 7
+
+web_parity:
+  out: ${paths.artifacts_dir}/web-parity/cases.json   # web/parity.html reads it here; model_dir inside points at deploy-5c
